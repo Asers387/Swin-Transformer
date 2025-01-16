@@ -12,7 +12,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import trunc_normal_
+from timm.layers import trunc_normal_
 
 from .swin_transformer import SwinTransformer
 from .swin_transformer_v2 import SwinTransformerV2

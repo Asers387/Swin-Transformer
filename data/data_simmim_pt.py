@@ -5,17 +5,14 @@
 # Written by Zhenda Xie
 # --------------------------------------------------------
 
-import math
-import random
 import numpy as np
 
-import torch
 import torch.distributed as dist
 import torchvision.transforms as T
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data._utils.collate import default_collate
-from torchvision.datasets import ImageFolder
-from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
+from data.silva_vhr_dataset import SilvaVHR, get_mean_std
 
 
 class MaskGenerator:
@@ -47,14 +44,16 @@ class MaskGenerator:
 
 class SimMIMTransform:
     def __init__(self, config):
+        mean, std = get_mean_std(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH)
+        
         self.transform_img = T.Compose([
             T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
             T.RandomResizedCrop(config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
             T.RandomHorizontalFlip(),
             T.ToTensor(),
-            T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN),std=torch.tensor(IMAGENET_DEFAULT_STD)),
+            T.Normalize(mean=mean, std=std)
         ])
- 
+
         if config.MODEL.TYPE in ['swin', 'swinv2']:
             model_patch_size=config.MODEL.SWIN.PATCH_SIZE
         else:
@@ -91,9 +90,16 @@ def collate_fn(batch):
 
 def build_loader_simmim(config):
     transform = SimMIMTransform(config)
-    dataset = ImageFolder(config.DATA.DATA_PATH, transform)
+    dataset = SilvaVHR(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH, 'train.json', transform)
     
     sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-    dataloader = DataLoader(dataset, config.DATA.BATCH_SIZE, sampler=sampler, num_workers=config.DATA.NUM_WORKERS, pin_memory=True, drop_last=True, collate_fn=collate_fn)
+    dataloader = DataLoader(dataset,
+                            config.DATA.BATCH_SIZE,
+                            sampler=sampler,
+                            num_workers=config.DATA.NUM_WORKERS,
+                            pin_memory=True,
+                            drop_last=True,
+                            collate_fn=collate_fn,
+                            persistent_workers=True)
     
     return dataloader

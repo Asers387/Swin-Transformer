@@ -15,7 +15,7 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
-import torch.cuda.amp as amp
+import torch.amp as amp
 from timm.utils import AverageMeter
 
 from config import get_config
@@ -25,6 +25,9 @@ from lr_scheduler import build_scheduler
 from optimizer import build_optimizer
 from logger import create_logger
 from utils_simmim import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper
+
+import wandb
+import yaml
 
 # pytorch major version (1.x or 2.x)
 PYTORCH_MAJOR_VERSION = int(torch.__version__.split('.')[0])
@@ -43,6 +46,7 @@ def parse_option():
     # easy config modification
     parser.add_argument('--batch-size', type=int, help="batch size for single GPU")
     parser.add_argument('--data-path', type=str, help='path to dataset')
+    parser.add_argument('--split-path', type=str, help='path to dataset split')
     parser.add_argument('--resume', help='resume from checkpoint')
     parser.add_argument('--accumulation-steps', type=int, help="gradient accumulation steps")
     parser.add_argument('--use-checkpoint', action='store_true',
@@ -50,6 +54,8 @@ def parse_option():
     parser.add_argument('--enable-amp', action='store_true')
     parser.add_argument('--disable-amp', action='store_false', dest='enable_amp')
     parser.set_defaults(enable_amp=True)
+    parser.add_argument('--fused_window_process', action='store_true', help='activate fused window process')
+    parser.add_argument('--fused_layernorm', action='store_true', help='activate fused layernorm')
     parser.add_argument('--output', default='output', type=str, metavar='PATH',
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
     parser.add_argument('--tag', help='tag of experiment')
@@ -86,7 +92,7 @@ def main(config):
         logger.info(f"number of GFLOPs: {flops / 1e9}")
 
     lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
-    scaler = amp.GradScaler()
+    scaler = amp.GradScaler('cuda')
 
     if config.TRAIN.AUTO_RESUME:
         resume_file = auto_resume_helper(config.OUTPUT, logger)
@@ -129,11 +135,11 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
     start = time.time()
     end = time.time()
-    for idx, (img, mask, _) in enumerate(data_loader):
+    for idx, (img, mask) in enumerate(data_loader):
         img = img.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
-        with amp.autocast(enabled=config.ENABLE_AMP):
+        with amp.autocast('cuda', enabled=config.ENABLE_AMP):
             loss = model(img, mask)
 
         if config.TRAIN.ACCUMULATION_STEPS > 1:
@@ -150,7 +156,6 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 scaler.update()
                 lr_scheduler.step_update(epoch * num_steps + idx)
         else:
-            optimizer.zero_grad()
             scaler.scale(loss).backward()
             if config.TRAIN.CLIP_GRAD:
                 scaler.unscale_(optimizer)
@@ -158,6 +163,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             else:
                 grad_norm = get_grad_norm(model.parameters())
             scaler.step(optimizer)
+            optimizer.zero_grad()
             scaler.update()
             lr_scheduler.step_update(epoch * num_steps + idx)
 
@@ -181,12 +187,20 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
                 f'loss_scale {loss_scale_meter.val:.4f} ({loss_scale_meter.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
+            
+            if dist.get_rank() == 0: # Not sure if this works
+                wandb_logger.log({
+                    'epoch': epoch,
+                    'loss': loss_meter.val,
+                    'lr': lr
+                })
+
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
 
 if __name__ == '__main__':
-    _, config = parse_option()
+    args, config = parse_option()
 
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         rank = int(os.environ["RANK"])
@@ -204,19 +218,25 @@ if __name__ == '__main__':
     np.random.seed(seed)
     cudnn.benchmark = True
 
-    # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    # gradient accumulation also need to scale the learning rate
-    if config.TRAIN.ACCUMULATION_STEPS > 1:
-        linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
-        linear_scaled_warmup_lr = linear_scaled_warmup_lr * config.TRAIN.ACCUMULATION_STEPS
-        linear_scaled_min_lr = linear_scaled_min_lr * config.TRAIN.ACCUMULATION_STEPS
+    # # linear scale the learning rate according to total batch size, may not be optimal
+    # linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    # linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    # linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    # # gradient accumulation also need to scale the learning rate
+    # if config.TRAIN.ACCUMULATION_STEPS > 1:
+    #     linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
+    #     linear_scaled_warmup_lr = linear_scaled_warmup_lr * config.TRAIN.ACCUMULATION_STEPS
+    #     linear_scaled_min_lr = linear_scaled_min_lr * config.TRAIN.ACCUMULATION_STEPS
+    # config.defrost()
+    # config.TRAIN.BASE_LR = linear_scaled_lr
+    # config.TRAIN.WARMUP_LR = linear_scaled_warmup_lr
+    # config.TRAIN.MIN_LR = linear_scaled_min_lr
+    # config.freeze()
+
     config.defrost()
-    config.TRAIN.BASE_LR = linear_scaled_lr
-    config.TRAIN.WARMUP_LR = linear_scaled_warmup_lr
-    config.TRAIN.MIN_LR = linear_scaled_min_lr
+    config.TRAIN.BASE_LR = config.TRAIN.BASE_LR
+    config.TRAIN.WARMUP_LR = config.TRAIN.WARMUP_LR
+    config.TRAIN.MIN_LR = config.TRAIN.MIN_LR
     config.freeze()
 
     os.makedirs(config.OUTPUT, exist_ok=True)
@@ -227,6 +247,15 @@ if __name__ == '__main__':
         with open(path, "w") as f:
             f.write(config.dump())
         logger.info(f"Full config saved to {path}")
+
+        with open(args.cfg, 'r') as f:
+            yaml_config = yaml.load(f, Loader=yaml.FullLoader)
+
+        wandb_logger = wandb.init(
+            project=config.MODEL.NAME,
+            dir=config.OUTPUT,
+            config=yaml_config
+        )
 
     # print config
     logger.info(config.dump())
