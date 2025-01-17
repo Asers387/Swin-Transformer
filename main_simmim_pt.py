@@ -73,7 +73,7 @@ def parse_option():
     return args, config
 
 
-def main(config):
+def train(config, logger, wandb_logger):
     data_loader_train = build_loader(config, simmim=True, is_pretrain=True)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
@@ -114,8 +114,8 @@ def main(config):
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
         data_loader_train.sampler.set_epoch(epoch)
 
-        train_one_epoch(config, model, data_loader_train, optimizer, epoch, lr_scheduler, scaler)
-        if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+        train_one_epoch(config, model, data_loader_train, optimizer, epoch, lr_scheduler, scaler, logger, wandb_logger)
+        if dist.get_rank() == 0 and config.SAVE_FREQ > 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
 
     total_time = time.time() - start_time
@@ -123,7 +123,7 @@ def main(config):
     logger.info('Training time {}'.format(total_time_str))
 
 
-def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, scaler):
+def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, scaler, logger, wandb_logger):
     model.train()
     optimizer.zero_grad()
 
@@ -192,14 +192,16 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 wandb_logger.log({
                     'epoch': epoch,
                     'loss': loss_meter.val,
-                    'lr': lr
+                    'lr': lr,
+                    'grad_norm': norm_meter.val,
+                    'loss_scale': loss_scale_meter.val
                 })
 
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
 
-if __name__ == '__main__':
+def main():
     args, config = parse_option()
 
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
@@ -218,29 +220,25 @@ if __name__ == '__main__':
     np.random.seed(seed)
     cudnn.benchmark = True
 
-    # # linear scale the learning rate according to total batch size, may not be optimal
-    # linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    # linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    # linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    # # gradient accumulation also need to scale the learning rate
-    # if config.TRAIN.ACCUMULATION_STEPS > 1:
-    #     linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
-    #     linear_scaled_warmup_lr = linear_scaled_warmup_lr * config.TRAIN.ACCUMULATION_STEPS
-    #     linear_scaled_min_lr = linear_scaled_min_lr * config.TRAIN.ACCUMULATION_STEPS
-    # config.defrost()
-    # config.TRAIN.BASE_LR = linear_scaled_lr
-    # config.TRAIN.WARMUP_LR = linear_scaled_warmup_lr
-    # config.TRAIN.MIN_LR = linear_scaled_min_lr
-    # config.freeze()
-
+    # linear scale the learning rate according to total batch size, may not be optimal
+    linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    # gradient accumulation also need to scale the learning rate
+    if config.TRAIN.ACCUMULATION_STEPS > 1:
+        linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
+        linear_scaled_warmup_lr = linear_scaled_warmup_lr * config.TRAIN.ACCUMULATION_STEPS
+        linear_scaled_min_lr = linear_scaled_min_lr * config.TRAIN.ACCUMULATION_STEPS
     config.defrost()
-    config.TRAIN.BASE_LR = config.TRAIN.BASE_LR
-    config.TRAIN.WARMUP_LR = config.TRAIN.WARMUP_LR
-    config.TRAIN.MIN_LR = config.TRAIN.MIN_LR
+    config.TRAIN.BASE_LR = linear_scaled_lr
+    config.TRAIN.WARMUP_LR = linear_scaled_warmup_lr
+    config.TRAIN.MIN_LR = linear_scaled_min_lr
     config.freeze()
 
     os.makedirs(config.OUTPUT, exist_ok=True)
     logger = create_logger(output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.NAME}")
+
+    wandb_logger = None
 
     if dist.get_rank() == 0:
         path = os.path.join(config.OUTPUT, "config.json")
@@ -260,4 +258,8 @@ if __name__ == '__main__':
     # print config
     logger.info(config.dump())
 
-    main(config)
+    train(config, logger, wandb_logger)
+
+
+if __name__ == '__main__':
+    main()

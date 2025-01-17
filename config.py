@@ -10,6 +10,8 @@ import torch
 import yaml
 from yacs.config import CfgNode as CN
 
+import wandb
+
 # pytorch major version (1.x or 2.x)
 PYTORCH_MAJOR_VERSION = int(torch.__version__.split('.')[0])
 
@@ -280,8 +282,18 @@ def _update_config_from_file(config, cfg_file):
     config.freeze()
 
 
-def update_config(config, args):
-    _update_config_from_file(config, args.cfg)
+def _update_config_from_wandb(config):
+    config.defrost()
+    wandb_config = CN(dict(wandb.config))
+    config.merge_from_other_cfg(wandb_config)
+    config.freeze()
+
+
+def update_config(config, args, wandb_sweep=False):
+    if not wandb_sweep:
+        _update_config_from_file(config, args.cfg)
+    else:
+        _update_config_from_wandb(config)
 
     config.defrost()
     if args.opts:
@@ -351,11 +363,11 @@ def update_config(config, args):
     config.freeze()
 
 
-def get_config(args):
+def get_config(args, wandb_sweep=False):
     """Get a yacs CfgNode object with default values."""
     # Return a clone so that the defaults will not be altered
     # This is for the "local variable" use pattern
     config = _C.clone()
-    update_config(config, args)
+    update_config(config, args, wandb_sweep)
 
     return config
