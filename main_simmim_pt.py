@@ -188,13 +188,13 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 f'loss_scale {loss_scale_meter.val:.4f} ({loss_scale_meter.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
             
-            if dist.get_rank() == 0: # Not sure if this works
+            if dist.get_rank() == 0:
                 wandb_logger.log({
                     'epoch': epoch,
-                    'loss': loss_meter.val,
+                    'loss': loss_meter.avg,
                     'lr': lr,
-                    'grad_norm': norm_meter.val,
-                    'loss_scale': loss_scale_meter.val
+                    'grad_norm': norm_meter.avg,
+                    'loss_scale': loss_scale_meter.avg
                 })
 
     epoch_time = time.time() - start

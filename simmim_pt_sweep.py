@@ -16,7 +16,7 @@ import wandb
 PYTORCH_MAJOR_VERSION = int(torch.__version__.split('.')[0])
 
 
-RESUME_SWEEP = None # 'sweep_id'
+RESUME_SWEEP = None # 'sweep_id' or None
 
 SWEEP_CONFIG = {
     'program': 'main_simmim_pt.py',
@@ -187,7 +187,7 @@ def main(config=None):
     else:
         wandb_logger = None
 
-    args, config = parse_option()
+    _, config = parse_option()
 
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         rank = int(os.environ["RANK"])
@@ -233,6 +233,9 @@ def main(config=None):
     logger.info(config.dump())
 
     train(config, logger, wandb_logger)
+
+    wandb.finish()
+    torch.distributed.destroy_process_group()
 
 
 if __name__ == '__main__':
