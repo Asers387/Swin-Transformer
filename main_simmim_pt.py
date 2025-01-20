@@ -123,7 +123,7 @@ def train(config, logger, wandb_logger):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
 
         loss = validate(config, data_loader_val, model, epoch, logger, wandb_logger)
-        logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
+        # logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -182,12 +182,12 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if idx % config.PRINT_FREQ == 0:
+        if (config.PRINT_FREQ > len(data_loader) and (idx + 1) == len(data_loader)) or (idx + 1) % config.PRINT_FREQ == 0:
             lr = optimizer.param_groups[0]['lr']
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             etas = batch_time.avg * (num_steps - idx)
             logger.info(
-                f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
+                f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx + 1}/{num_steps}]\t'
                 f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
@@ -195,19 +195,22 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 f'loss_scale {loss_scale_meter.val:.4f} ({loss_scale_meter.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
             
-            if dist.get_rank() == 0:
-                wandb_logger.log(
-                    {
-                        'train_loss': loss_meter.avg,
-                        'lr': lr,
-                        'grad_norm': norm_meter.avg,
-                        'loss_scale': loss_scale_meter.avg
-                    },
-                    step=epoch
-                )
+    if dist.get_rank() == 0:
+        wandb_logger.log(
+            {
+                'lr': lr,
+                'train_loss': loss_meter.val,
+                'grad_norm': norm_meter.val,
+                'loss_scale': loss_scale_meter.val
+            },
+            step=epoch
+        )
+
+    if config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
+        lr_scheduler.step(epoch, loss_meter.val)
 
     epoch_time = time.time() - start
-    logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
+    # logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
 
 @torch.no_grad()
@@ -233,21 +236,21 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if idx % config.PRINT_FREQ == 0:
+        if (config.PRINT_FREQ > len(data_loader) and (idx + 1) == len(data_loader)) or (idx + 1) % config.PRINT_FREQ == 0:
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             logger.info(
-                f'Val: [{idx}/{len(data_loader)}]\t'
+                f'Val: [{idx + 1}/{len(data_loader)}]\t'
                 f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                 f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'Mem {memory_used:.0f}MB')
             
-            if dist.get_rank() == 0:
-                wandb_logger.log(
-                    {
-                        'val_loss': loss_meter.avg
-                    },
-                    step=epoch
-                )
+    if dist.get_rank() == 0:
+        wandb_logger.log(
+            {
+                'val_loss': loss_meter.avg
+            },
+            step=epoch
+        )
 
     return loss_meter.avg
 

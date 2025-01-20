@@ -174,13 +174,18 @@ _C.TRAIN.LR_SCHEDULER = CN()
 _C.TRAIN.LR_SCHEDULER.NAME = 'cosine'
 # Epoch interval to decay LR, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 30
-# LR decay rate, used in StepLRScheduler
+# LR decay rate, used in StepLRScheduler and PlateauLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_RATE = 0.1
 # warmup_prefix used in CosineLRScheduler
 _C.TRAIN.LR_SCHEDULER.WARMUP_PREFIX = True
 # [SimMIM] Gamma / Multi steps value, used in MultiStepLRScheduler
 _C.TRAIN.LR_SCHEDULER.GAMMA = 0.1
 _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
+# [SimMIM] Patience, used in PlateauLRScheduler
+_C.TRAIN.LR_SCHEDULER.PATIENCE_T = 10
+_C.TRAIN.LR_SCHEDULER.THRESHOLD = 0.0001
+_C.TRAIN.LR_SCHEDULER.COOLDOWN_T = 0
+_C.TRAIN.LR_SCHEDULER.MODE = 'max'
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()

@@ -116,13 +116,19 @@ SWEEP_CONFIG = {
                 'LR_SCHEDULER': {
                     'parameters': {
                         'NAME': {
-                            'value': 'multistep'
+                            'value': 'plateau'
                         },
-                        'GAMMA': {
-                            'values': [0.1, 0.25, 0.5]
+                        'PATIENCE_T': {
+                            'values': [10, 25, 50]
                         },
-                        'MULTISTEPS': {
-                            'value': [200, 400, 600]
+                        'THRESHOLD': {
+                            'values': [1e-2, 1e-3, 1e-4]
+                        },
+                        'COOLDOWN_T': {
+                            'value': 0
+                        },
+                        'MODE': {
+                            'value': 'min'
                         }
                     }
                 }

@@ -11,6 +11,7 @@ import torch
 from timm.scheduler.cosine_lr import CosineLRScheduler
 from timm.scheduler.step_lr import StepLRScheduler
 from timm.scheduler.scheduler import Scheduler
+from timm.scheduler.plateau_lr import PlateauLRScheduler
 
 
 def build_scheduler(config, optimizer, n_iter_per_epoch):
@@ -58,6 +59,17 @@ def build_scheduler(config, optimizer, n_iter_per_epoch):
             warmup_lr_init=config.TRAIN.WARMUP_LR,
             warmup_t=warmup_steps,
             t_in_epochs=False,
+        )
+    elif config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
+        lr_scheduler = PlateauLRScheduler(
+            optimizer,
+            decay_rate=config.TRAIN.LR_SCHEDULER.DECAY_RATE,
+            patience_t=config.TRAIN.LR_SCHEDULER.PATIENCE_T,
+            threshold=config.TRAIN.LR_SCHEDULER.THRESHOLD,
+            cooldown_t=config.TRAIN.LR_SCHEDULER.COOLDOWN_T,
+            warmup_lr_init=config.TRAIN.WARMUP_LR,
+            warmup_t=config.TRAIN.WARMUP_EPOCHS,
+            mode=config.TRAIN.LR_SCHEDULER.MODE
         )
 
     return lr_scheduler
