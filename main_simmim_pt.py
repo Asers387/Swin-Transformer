@@ -24,7 +24,7 @@ from data import build_loader
 from lr_scheduler import build_scheduler
 from optimizer import build_optimizer
 from logger import create_logger
-from utils_simmim import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper
+from utils_simmim import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper, reduce_tensor
 
 import wandb
 import yaml
@@ -74,7 +74,7 @@ def parse_option():
 
 
 def train(config, logger, wandb_logger):
-    data_loader_train = build_loader(config, simmim=True, is_pretrain=True)
+    data_loader_train, data_loader_val, data_loader_test = build_loader(config, simmim=True, is_pretrain=True)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_model(config, is_pretrain=True)
@@ -108,6 +108,10 @@ def train(config, logger, wandb_logger):
 
     if config.MODEL.RESUME:
         load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, scaler, logger)
+        loss = validate(config, data_loader_val, model, logger, wandb_logger)
+        logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}%")
+        if config.EVAL_MODE:
+            return
 
     logger.info("Start training")
     start_time = time.time()
@@ -117,6 +121,9 @@ def train(config, logger, wandb_logger):
         train_one_epoch(config, model, data_loader_train, optimizer, epoch, lr_scheduler, scaler, logger, wandb_logger)
         if dist.get_rank() == 0 and config.SAVE_FREQ > 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
+
+        loss = validate(config, data_loader_val, model, logger, wandb_logger)
+        logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -190,8 +197,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             
             if dist.get_rank() == 0:
                 wandb_logger.log({
-                    'epoch': epoch,
-                    'loss': loss_meter.avg,
+                    'train_loss': loss_meter.avg,
                     'lr': lr,
                     'grad_norm': norm_meter.avg,
                     'loss_scale': loss_scale_meter.avg
@@ -199,6 +205,45 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
+
+
+@torch.no_grad()
+def validate(config, data_loader, model, logger, wandb_logger):
+    model.eval()
+
+    batch_time = AverageMeter()
+    loss_meter = AverageMeter()
+
+    end = time.time()
+    for idx, (img, mask) in enumerate(data_loader):
+        img = img.cuda(non_blocking=True)
+        mask = mask.cuda(non_blocking=True)
+
+        with amp.autocast('cuda', enabled=config.ENABLE_AMP):
+            loss = model(img, mask)
+
+        loss = reduce_tensor(loss)
+
+        loss_meter.update(loss.item(), img.size(0))
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if idx % config.PRINT_FREQ == 0:
+            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+            logger.info(
+                f'Val: [{idx}/{len(data_loader)}]\t'
+                f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
+                f'Mem {memory_used:.0f}MB')
+            
+            if dist.get_rank() == 0:
+                wandb_logger.log({
+                    'val_loss': loss_meter.avg
+                })
+
+    return loss_meter.avg
 
 
 def main():

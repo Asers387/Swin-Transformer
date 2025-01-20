@@ -16,7 +16,7 @@ from data.silva_vhr_dataset import SilvaVHR, get_mean_std
 
 
 class MaskGenerator:
-    def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6):
+    def __init__(self, input_size=192, mask_patch_size=32, model_patch_size=4, mask_ratio=0.6, random_mask=True):
         self.input_size = input_size
         self.mask_patch_size = mask_patch_size
         self.model_patch_size = model_patch_size
@@ -30,9 +30,17 @@ class MaskGenerator:
         
         self.token_count = self.rand_size ** 2
         self.mask_count = int(np.ceil(self.token_count * self.mask_ratio))
+
+        self.random_mask = random_mask
+        if not self.random_mask:
+            self.static_mask = np.random.permutation(self.token_count)[:self.mask_count]
         
     def __call__(self):
-        mask_idx = np.random.permutation(self.token_count)[:self.mask_count]
+        if self.random_mask:
+            mask_idx = np.random.permutation(self.token_count)[:self.mask_count]
+        else:
+            mask_idx = self.static_mask
+
         mask = np.zeros(self.token_count, dtype=int)
         mask[mask_idx] = 1
         
@@ -43,19 +51,31 @@ class MaskGenerator:
 
 
 class SimMIMTransform:
-    def __init__(self, config):
-        mean, std = get_mean_std(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH)
-        
-        self.transform_img = T.Compose([
-            T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-            T.RandomResizedCrop(config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
-            T.RandomHorizontalFlip(),
-            T.ToTensor(),
-            T.Normalize(mean=mean, std=std)
-        ])
-
+    def __init__(self, split_name, config):
         if config.MODEL.TYPE in ['swin', 'swinv2']:
             model_patch_size=config.MODEL.SWIN.PATCH_SIZE
+        else:
+            raise NotImplementedError
+        
+        mean, std = get_mean_std(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH)
+
+        if split_name == 'train':
+            self.transform_img = T.Compose([
+                T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+                T.RandomResizedCrop(config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
+                T.RandomHorizontalFlip(),
+                T.ToTensor(),
+                T.Normalize(mean=mean, std=std)
+            ])
+            random_mask = True
+        elif split_name == 'val' or split_name == 'test':
+            self.transform_img = T.Compose([
+                T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+                T.CenterCrop(config.DATA.IMG_SIZE),
+                T.ToTensor(),
+                T.Normalize(mean=mean, std=std)
+            ])
+            random_mask = False
         else:
             raise NotImplementedError
         
@@ -64,6 +84,7 @@ class SimMIMTransform:
             mask_patch_size=config.DATA.MASK_PATCH_SIZE,
             model_patch_size=model_patch_size,
             mask_ratio=config.DATA.MASK_RATIO,
+            random_mask=random_mask
         )
     
     def __call__(self, img):
@@ -88,18 +109,43 @@ def collate_fn(batch):
         return ret
 
 
-def build_loader_simmim(config):
-    transform = SimMIMTransform(config)
-    dataset = SilvaVHR(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH, 'train.json', transform)
+def build_loader_simmim(split_name, config):
+    transform = SimMIMTransform(split_name, config)
+    dataset = SilvaVHR(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH, split_name, transform)
+
+    if split_name == 'train':
+        shuffle = True
+        drop_last = True
+    elif split_name == 'val' or split_name == 'test':
+        shuffle = False
+        drop_last = False
+    else:
+        raise NotImplementedError
     
-    sampler = DistributedSampler(dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
-    dataloader = DataLoader(dataset,
-                            config.DATA.BATCH_SIZE,
-                            sampler=sampler,
-                            num_workers=config.DATA.NUM_WORKERS,
-                            pin_memory=True,
-                            drop_last=True,
-                            collate_fn=collate_fn,
-                            persistent_workers=True)
-    
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=dist.get_world_size(),
+        rank=dist.get_rank(),
+        shuffle=shuffle
+    )
+
+    dataloader = DataLoader(
+        dataset,
+        config.DATA.BATCH_SIZE,
+        sampler=sampler,
+        num_workers=config.DATA.NUM_WORKERS,
+        pin_memory=True,
+        drop_last=drop_last,
+        collate_fn=collate_fn,
+        persistent_workers=True
+    )
+
     return dataloader
+
+
+def build_loaders_simmim(config):
+    dataloader_train = build_loader_simmim('train', config)
+    dataloader_val = build_loader_simmim('val', config)
+    dataloader_test = build_loader_simmim('test', config)
+    
+    return dataloader_train, dataloader_val, dataloader_test

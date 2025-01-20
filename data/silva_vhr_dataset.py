@@ -9,12 +9,13 @@ warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
 
 class SilvaVHR(Dataset):
-    def __init__(self, root_path, split_path, json_name, transform, target_transform=None):
+    def __init__(self, root_path, split_path, split_name, transform, target_transform=None):
         super().__init__()
         
         self.root_path = Path(root_path)
 
-        with open(self.root_path / split_path / json_name, 'r') as f:
+        split_json_name = (self.root_path / split_path / split_name).with_suffix('.json')
+        with open(split_json_name, 'r') as f:
             self.data = json.loads(f.read())
 
         self.transform = transform
@@ -42,21 +43,3 @@ def get_mean_std(root_path, split_path):
     std = metadata['train_std']
 
     return mean, std
-
-# def get_train_transform(input_size):
-#     mean, std = get_mean_std()
-
-#     return A.Compose([
-#         A.RandomResizedCrop((input_size, input_size), scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
-#         A.HorizontalFlip(),
-#         A.Normalize(mean=mean, std=std),
-#         ToTensorV2()
-#     ])
-
-# def get_val_test_transform():
-#     mean, std = get_mean_std()
-
-#     return A.Compose([
-#         A.Normalize(mean=mean, std=std),
-#         ToTensorV2()
-#     ])
