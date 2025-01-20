@@ -122,7 +122,7 @@ def train(config, logger, wandb_logger):
         if dist.get_rank() == 0 and config.SAVE_FREQ > 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
 
-        loss = validate(config, data_loader_val, model, logger, wandb_logger)
+        loss = validate(config, data_loader_val, model, epoch, logger, wandb_logger)
         logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
 
     total_time = time.time() - start_time
@@ -196,19 +196,22 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 f'mem {memory_used:.0f}MB')
             
             if dist.get_rank() == 0:
-                wandb_logger.log({
-                    'train_loss': loss_meter.avg,
-                    'lr': lr,
-                    'grad_norm': norm_meter.avg,
-                    'loss_scale': loss_scale_meter.avg
-                })
+                wandb_logger.log(
+                    {
+                        'train_loss': loss_meter.avg,
+                        'lr': lr,
+                        'grad_norm': norm_meter.avg,
+                        'loss_scale': loss_scale_meter.avg
+                    },
+                    step=epoch
+                )
 
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
 
 @torch.no_grad()
-def validate(config, data_loader, model, logger, wandb_logger):
+def validate(config, data_loader, model, epoch, logger, wandb_logger):
     model.eval()
 
     batch_time = AverageMeter()
@@ -239,9 +242,12 @@ def validate(config, data_loader, model, logger, wandb_logger):
                 f'Mem {memory_used:.0f}MB')
             
             if dist.get_rank() == 0:
-                wandb_logger.log({
-                    'val_loss': loss_meter.avg
-                })
+                wandb_logger.log(
+                    {
+                        'val_loss': loss_meter.avg
+                    },
+                    step=epoch
+                )
 
     return loss_meter.avg
 
