@@ -61,16 +61,30 @@ def build_scheduler(config, optimizer, n_iter_per_epoch):
             t_in_epochs=False,
         )
     elif config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
-        lr_scheduler = PlateauLRScheduler(
-            optimizer,
-            decay_rate=config.TRAIN.LR_SCHEDULER.DECAY_RATE,
-            patience_t=config.TRAIN.LR_SCHEDULER.PATIENCE_T,
-            threshold=config.TRAIN.LR_SCHEDULER.THRESHOLD,
-            cooldown_t=config.TRAIN.LR_SCHEDULER.COOLDOWN_T,
-            warmup_lr_init=config.TRAIN.WARMUP_LR,
-            warmup_t=config.TRAIN.WARMUP_EPOCHS,
-            mode=config.TRAIN.LR_SCHEDULER.MODE
-        )
+        if config.TRAIN.LR_SCHEDULER.EARLY_STOP:
+            lr_scheduler = PlateauLRSchedulerEarlyStop(
+                optimizer,
+                decay_rate=config.TRAIN.LR_SCHEDULER.DECAY_RATE,
+                patience_t=config.TRAIN.LR_SCHEDULER.PATIENCE_T,
+                threshold=config.TRAIN.LR_SCHEDULER.THRESHOLD,
+                cooldown_t=config.TRAIN.LR_SCHEDULER.COOLDOWN_T,
+                warmup_lr_init=config.TRAIN.WARMUP_LR,
+                warmup_t=config.TRAIN.WARMUP_EPOCHS,
+                mode=config.TRAIN.LR_SCHEDULER.MODE,
+                lr_min=config.TRAIN.MIN_LR
+            )
+        else:
+            lr_scheduler = PlateauLRScheduler(
+                optimizer,
+                decay_rate=config.TRAIN.LR_SCHEDULER.DECAY_RATE,
+                patience_t=config.TRAIN.LR_SCHEDULER.PATIENCE_T,
+                threshold=config.TRAIN.LR_SCHEDULER.THRESHOLD,
+                cooldown_t=config.TRAIN.LR_SCHEDULER.COOLDOWN_T,
+                warmup_lr_init=config.TRAIN.WARMUP_LR,
+                warmup_t=config.TRAIN.WARMUP_EPOCHS,
+                mode=config.TRAIN.LR_SCHEDULER.MODE,
+                lr_min=config.TRAIN.MIN_LR
+            )
 
     return lr_scheduler
 
@@ -162,3 +176,27 @@ class MultiStepLRScheduler(Scheduler):
             return self._get_lr(num_updates)
         else:
             return None
+
+
+class PlateauLRSchedulerEarlyStop(PlateauLRScheduler):
+    def __init__(self, optimizer, **kwargs) -> None:
+        super().__init__(optimizer, **kwargs)
+        
+        self._last_lr = self.lr_scheduler._last_lr
+    
+    def has_hit_min(self, epoch, metric):
+        if epoch <= self.warmup_t:
+            return False
+
+        has_hit_plateau = (
+            self.lr_scheduler.cooldown_counter == self.lr_scheduler.cooldown
+            and self.lr_scheduler.num_bad_epochs == 0
+            and metric != self.lr_scheduler.best
+        )
+        has_not_reduced = self.lr_scheduler._last_lr == self._last_lr
+        
+        if has_hit_plateau:
+            self._last_lr = self.lr_scheduler._last_lr
+
+        return has_hit_plateau and has_not_reduced
+        

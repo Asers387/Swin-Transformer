@@ -181,11 +181,13 @@ _C.TRAIN.LR_SCHEDULER.WARMUP_PREFIX = True
 # [SimMIM] Gamma / Multi steps value, used in MultiStepLRScheduler
 _C.TRAIN.LR_SCHEDULER.GAMMA = 0.1
 _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
-# [SimMIM] Patience, used in PlateauLRScheduler
+# [SimMIM] Used in PlateauLRScheduler
 _C.TRAIN.LR_SCHEDULER.PATIENCE_T = 10
-_C.TRAIN.LR_SCHEDULER.THRESHOLD = 0.0001
 _C.TRAIN.LR_SCHEDULER.COOLDOWN_T = 0
+_C.TRAIN.LR_SCHEDULER.THRESHOLD = 0.0001
 _C.TRAIN.LR_SCHEDULER.MODE = 'max'
+# [SimMIM] Custom option for PlateauLRScheduler, stops training if LR falls below LR_MIN
+_C.TRAIN.LR_SCHEDULER.EARLY_STOP = False
 
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()

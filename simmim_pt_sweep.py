@@ -98,13 +98,16 @@ SWEEP_CONFIG = {
         'TRAIN': {
             'parameters': {
                 'EPOCHS': {
-                    'value': 800
+                    'value': 400
                 },
                 'WARMUP_EPOCHS': {
                     'value': 10
                 },
                 'BASE_LR': {
                     'values': [1e-1, 1e-2, 1e-3, 1e-4]
+                },
+                'MIN_LR': {
+                    'value': 1e-6
                 },
                 'WARMUP_LR': {
                     'value': 1e-5
@@ -119,16 +122,19 @@ SWEEP_CONFIG = {
                             'value': 'plateau'
                         },
                         'PATIENCE_T': {
-                            'values': [10, 25, 50]
+                            'values': [10, 25]
                         },
                         'THRESHOLD': {
-                            'values': [1e-2, 1e-3, 1e-4]
+                            'values': [1e-2, 1e-3]
                         },
                         'COOLDOWN_T': {
                             'value': 0
                         },
                         'MODE': {
                             'value': 'min'
+                        },
+                        'EARLY_STOP': {
+                            'value': True
                         }
                     }
                 }

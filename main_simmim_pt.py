@@ -125,6 +125,12 @@ def train(config, logger, wandb_logger):
         loss = validate(config, data_loader_val, model, epoch, logger, wandb_logger)
         # logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
 
+        if config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
+            lr_scheduler.step(epoch + 1, loss)
+
+            if config.TRAIN.LR_SCHEDULER.EARLY_STOP and lr_scheduler.has_hit_min(epoch + 1, loss):
+                break
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
@@ -205,9 +211,6 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             },
             step=epoch
         )
-
-    if config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
-        lr_scheduler.step(epoch, loss_meter.val)
 
     epoch_time = time.time() - start
     # logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
