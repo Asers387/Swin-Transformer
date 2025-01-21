@@ -23,7 +23,7 @@ SWEEP_CONFIG = {
     'name': 'simmim_pretrain_sweep',
     'method': 'bayes',
     'metric': {
-        'name': 'loss',
+        'name': 'val_loss',
         'goal': 'minimize'
     },
     'parameters': {
@@ -122,10 +122,10 @@ SWEEP_CONFIG = {
                             'value': 'plateau'
                         },
                         'PATIENCE_T': {
-                            'values': [10, 25]
+                            'values': [5, 10]
                         },
                         'THRESHOLD': {
-                            'values': [1e-2, 1e-3]
+                            'value': 1e-2
                         },
                         'COOLDOWN_T': {
                             'value': 0
