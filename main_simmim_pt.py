@@ -74,7 +74,7 @@ def parse_option():
 
 
 def train(config, logger, wandb_logger):
-    data_loader_train, data_loader_val, data_loader_test = build_loader(config, simmim=True, is_pretrain=True)
+    data_loader_train, data_loader_val, _ = build_loader(config, simmim=True, is_pretrain=True)
 
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_model(config, is_pretrain=True)
@@ -115,20 +115,20 @@ def train(config, logger, wandb_logger):
 
     logger.info("Start training")
     start_time = time.time()
-    for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
+    for epoch in range(config.TRAIN.START_EPOCH + 1, config.TRAIN.EPOCHS + 1):
         data_loader_train.sampler.set_epoch(epoch)
 
         train_one_epoch(config, model, data_loader_train, optimizer, epoch, lr_scheduler, scaler, logger, wandb_logger)
-        if dist.get_rank() == 0 and config.SAVE_FREQ > 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+        if dist.get_rank() == 0 and config.SAVE_FREQ > 0 and (epoch % config.SAVE_FREQ == 0 or epoch == config.TRAIN.EPOCHS):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
 
         loss = validate(config, data_loader_val, model, epoch, logger, wandb_logger)
         # logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
 
         if config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
-            lr_scheduler.step(epoch + 1, loss)
+            lr_scheduler.step(epoch, loss)
 
-            if config.TRAIN.LR_SCHEDULER.EARLY_STOP and lr_scheduler.has_hit_min(epoch + 1, loss):
+            if config.TRAIN.LR_SCHEDULER.EARLY_STOP and lr_scheduler.has_hit_min(epoch, loss):
                 break
 
     total_time = time.time() - start_time
@@ -148,7 +148,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
     start = time.time()
     end = time.time()
-    for idx, (img, mask) in enumerate(data_loader):
+    for idx, (img, mask) in enumerate(data_loader, start=1):
         img = img.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
@@ -163,7 +163,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
             else:
                 grad_norm = get_grad_norm(model.parameters())
-            if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
+            if idx % config.TRAIN.ACCUMULATION_STEPS == 0:
                 scaler.step(optimizer)
                 optimizer.zero_grad()
                 scaler.update()
@@ -188,12 +188,12 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if (config.PRINT_FREQ > len(data_loader) and (idx + 1) == len(data_loader)) or (idx + 1) % config.PRINT_FREQ == 0:
+        if idx % config.PRINT_FREQ == 0 or idx == len(data_loader):
             lr = optimizer.param_groups[0]['lr']
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             etas = batch_time.avg * (num_steps - idx)
             logger.info(
-                f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx + 1}/{num_steps}]\t'
+                f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
                 f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
@@ -224,7 +224,7 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
     loss_meter = AverageMeter()
 
     end = time.time()
-    for idx, (img, mask) in enumerate(data_loader):
+    for idx, (img, mask) in enumerate(data_loader, start=1):
         img = img.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
@@ -239,10 +239,10 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if (config.PRINT_FREQ > len(data_loader) and (idx + 1) == len(data_loader)) or (idx + 1) % config.PRINT_FREQ == 0:
+        if idx % config.PRINT_FREQ == 0 or idx == len(data_loader):
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             logger.info(
-                f'Val: [{idx + 1}/{len(data_loader)}]\t'
+                f'Val: [{idx}/{len(data_loader)}]\t'
                 f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                 f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'Mem {memory_used:.0f}MB')
