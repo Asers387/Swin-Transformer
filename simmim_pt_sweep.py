@@ -47,9 +47,7 @@ SWEEP_CONFIG = {
                                     'value': True
                                 },
                                 'PATCH_SIZE': {
-                                    # 'distribution': 'int_uniform',
-                                    # 'min': 24, 'max': 94
-                                    'values': [23, 47, 71]
+                                    'values': list(range(7, 128, 8))
                                 }
                             }
                         }
@@ -58,9 +56,7 @@ SWEEP_CONFIG = {
                 'SWINV2': {
                     'parameters': {
                         'EMBED_DIM': {
-                            # 'distribution': 'q_uniform',
-                            # 'min': 64, 'max': 256, 'q': 32
-                            'value': 128 
+                            'value': 128
                         },
                         'DEPTHS': {
                             'value': [2, 2, 18, 2]
@@ -78,20 +74,16 @@ SWEEP_CONFIG = {
         'DATA': {
             'parameters': {
                 'BATCH_SIZE': {
-                    'distribution': 'q_uniform',
-                    # 'min': 8, 'max': 64, 'q': 8
-                    'min': 8, 'max': 32, 'q': 8
+                    'values': [8, 16, 24, 32]
                 },
                 'IMG_SIZE': {
                     'value': 256
                 },
                 'MASK_PATCH_SIZE': {
-                    'distribution': 'q_uniform',
-                    'min': 16, 'max': 32, 'q': 16
+                    'values': [8, 16, 32, 64]
                 },
                 'MASK_RATIO': {
-                    'distribution': 'q_uniform',
-                    'min': 0.1, 'max': 0.9, 'q': 0.1
+                    'values': [0.1, 0.2, 0.3, 0.4, 0.5]
                 }
             }
         },
@@ -104,17 +96,17 @@ SWEEP_CONFIG = {
                     'value': 10
                 },
                 'BASE_LR': {
-                    'values': [1e-1, 1e-2, 1e-3, 1e-4]
+                    'values': [1e-0, 1e-1, 1e-2, 1e-3, 1e-4]
                 },
                 'MIN_LR': {
                     'value': 1e-6
                 },
                 'WARMUP_LR': {
-                    'value': 1e-5
+                    'value': 1e-6
                 },
                 'WEIGHT_DECAY': {
                     'distribution': 'uniform',
-                    'min': 0.0, 'max': 0.2
+                    'min': 0.0, 'max': 0.5
                 },
                 'LR_SCHEDULER': {
                     'parameters': {
@@ -122,7 +114,7 @@ SWEEP_CONFIG = {
                             'value': 'plateau'
                         },
                         'PATIENCE_T': {
-                            'values': [5, 10]
+                            'values': [5, 10, 15, 20]
                         },
                         'THRESHOLD': {
                             'value': 1e-2
