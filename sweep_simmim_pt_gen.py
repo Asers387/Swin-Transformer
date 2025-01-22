@@ -81,7 +81,7 @@ SWEEP_CONFIG = {
                     'value': 10
                 },
                 'BASE_LR': {
-                    'values': [1e-0, 1e-1, 1e-2, 1e-3, 1e-4]
+                    'values': [1e0 - 1e-8, 1e-1, 1e-2, 1e-3, 1e-4] # avoid bug with config typechecking
                 },
                 'MIN_LR': {
                     'value': 1e-6
