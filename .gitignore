@@ -3,8 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# launch bash
-*.sh
 # nsight system report files
 *.nsys-rep
 *.sqlite

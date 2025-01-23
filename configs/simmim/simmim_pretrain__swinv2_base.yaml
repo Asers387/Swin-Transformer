@@ -5,7 +5,7 @@ MODEL:
   SIMMIM:
     NORM_TARGET:
       ENABLE: True
-      PATCH_SIZE: 71
+      PATCH_SIZE: 127
   SWINV2:
     EMBED_DIM: 128
     DEPTHS: [ 2, 2, 18, 2 ]
@@ -14,22 +14,22 @@ MODEL:
 DATA:
   BATCH_SIZE: 16
   IMG_SIZE: 256
-  MASK_PATCH_SIZE: 16
+  MASK_PATCH_SIZE: 8
   MASK_RATIO: 0.2
 TRAIN:
   EPOCHS: 400
   WARMUP_EPOCHS: 10
-  BASE_LR: 1e-1 # 1e-0
+  BASE_LR: 1e-1
   MIN_LR: 1e-6
-  WARMUP_LR: 1e-5
-  WEIGHT_DECAY: 0.05
+  WARMUP_LR: 1e-6
+  WEIGHT_DECAY: 0.3
   LR_SCHEDULER:
     NAME: 'plateau'
-    PATIENCE_T: 10
+    PATIENCE_T: 20
     THRESHOLD: 1e-2
     COOLDOWN_T: 0
     MODE: 'min'
     EARLY_STOP: True
 PRINT_FREQ: 100
-SAVE_FREQ: 50
-TAG: simmim_pretrain__swinv2_base__img256_window16__400ep
+SAVE_FREQ: 400
+TAG: simmim_pretrain__swinv2_base
