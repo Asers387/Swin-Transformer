@@ -155,8 +155,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         mask = mask.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            x_rec = model(x, mask)
-            loss = model.loss(x, x_rec, mask)
+            _, loss = model(x, mask)
 
         if config.TRAIN.ACCUMULATION_STEPS > 1:
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
@@ -232,8 +231,7 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
         mask = mask.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            x_rec = model(x, mask)
-            loss = model.loss(x, x_rec, mask)
+            _, loss = model(x, mask)
 
         loss = reduce_tensor(loss)
 
@@ -266,11 +264,11 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
 def visualize(config, data_loader, model):  
     model.eval()
 
-    for i, (img, mask) in enumerate(data_loader):
-        img = img.cuda(non_blocking=True)
+    for i, (x, mask) in enumerate(data_loader):
+        x = x.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
-        x_rec = model(img, mask)
+        x_rec, _ = model(x, mask)
 
         for j, _x_rec in enumerate(x_rec):
             output_name = Path(config.MODEL.RESUME).with_suffix('') / f'{i * len(data_loader) + j}.jpg'

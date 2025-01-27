@@ -134,9 +134,7 @@ class SimMIM(nn.Module):
     def forward(self, x, mask):
         z = self.encoder(x, mask)
         x_rec = self.decoder(z)
-        return x_rec
         
-    def loss(self, x, x_rec, mask):
         mask = mask.repeat_interleave(self.patch_size, 1).repeat_interleave(self.patch_size, 2).unsqueeze(1).contiguous()
         
         # norm target as prompted
@@ -145,7 +143,8 @@ class SimMIM(nn.Module):
         
         loss_recon = F.l1_loss(x, x_rec, reduction='none')
         loss = (loss_recon * mask).sum() / (mask.sum() + 1e-5) / self.in_chans
-        return loss
+        
+        return x_rec, loss
 
     @torch.jit.ignore
     def no_weight_decay(self):
