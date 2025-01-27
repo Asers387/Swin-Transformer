@@ -40,17 +40,23 @@ def build_optimizer(config, model, simmim=False, is_pretrain=False):
 
     opt_lower = config.TRAIN.OPTIMIZER.NAME.lower()
     optimizer = None
+
+    if config.TRAIN.OPTIMIZER.BETA_1 is not None and config.TRAIN.OPTIMIZER.BETA_2 is not None:
+        betas = (config.TRAIN.OPTIMIZER.BETA_1, config.TRAIN.OPTIMIZER.BETA_2)
+    else:
+        betas = config.TRAIN.OPTIMIZER.BETAS
+
     if opt_lower == 'sgd':
         optimizer = optim.SGD(parameters, momentum=config.TRAIN.OPTIMIZER.MOMENTUM, nesterov=True,
                               lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
     elif opt_lower == 'adamw':
-        optimizer = optim.AdamW(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=config.TRAIN.OPTIMIZER.BETAS,
+        optimizer = optim.AdamW(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=betas,
                                 lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
     elif opt_lower == 'fused_adam':
-        optimizer = FusedAdam(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=config.TRAIN.OPTIMIZER.BETAS,
+        optimizer = FusedAdam(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=betas,
                               lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
     elif opt_lower == 'fused_lamb':
-        optimizer = FusedLAMB(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=config.TRAIN.OPTIMIZER.BETAS,
+        optimizer = FusedLAMB(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=betas,
                               lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
 
     return optimizer

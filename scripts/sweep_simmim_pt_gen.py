@@ -81,7 +81,8 @@ SWEEP_CONFIG = {
                     'value': 10
                 },
                 'BASE_LR': {
-                    'values': [1e0 - 1e-8, 1e-1, 1e-2, 1e-3, 1e-4] # avoid bug with config typechecking
+                    'distribution': 'log_uniform',
+                    'min': 1e-4, 'max': 1.0
                 },
                 'MIN_LR': {
                     'value': 1e-6
@@ -99,19 +100,34 @@ SWEEP_CONFIG = {
                             'value': 'plateau'
                         },
                         'PATIENCE_T': {
-                            'values': [5, 10, 15, 20]
+                            'values': [5, 10, 20]
                         },
                         'THRESHOLD': {
                             'value': 1e-2
                         },
                         'COOLDOWN_T': {
-                            'value': 0
+                            'values': [0, 5, 10]
                         },
                         'MODE': {
                             'value': 'min'
                         },
                         'EARLY_STOP': {
                             'value': True
+                        }
+                    }
+                },
+                'OPTIMIZER': {
+                    'parameters': {
+                        'NAME': {
+                            'value': 'adamw'
+                        },
+                        'BETA_1': {
+                            'distribution': 'uniform',
+                            'min': 0.85, 'max': 0.95
+                        },
+                        'BETA_2': {
+                            'distribution': 'log_uniform',
+                            'min': 0.9, 'max': 0.999
                         }
                     }
                 }
