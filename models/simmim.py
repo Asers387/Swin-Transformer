@@ -134,7 +134,9 @@ class SimMIM(nn.Module):
     def forward(self, x, mask):
         z = self.encoder(x, mask)
         x_rec = self.decoder(z)
-
+        return x_rec
+        
+    def loss(self, x, x_rec, mask):
         mask = mask.repeat_interleave(self.patch_size, 1).repeat_interleave(self.patch_size, 2).unsqueeze(1).contiguous()
         
         # norm target as prompted

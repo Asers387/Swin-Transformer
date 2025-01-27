@@ -28,6 +28,8 @@ from utils_simmim import load_checkpoint, save_checkpoint, get_grad_norm, auto_r
 
 import wandb
 import yaml
+import torchshow as ts
+from pathlib import Path
 
 # pytorch major version (1.x or 2.x)
 PYTORCH_MAJOR_VERSION = int(torch.__version__.split('.')[0])
@@ -58,6 +60,7 @@ def parse_option():
     parser.add_argument('--fused_layernorm', action='store_true', help='activate fused layernorm')
     parser.add_argument('--output', default='output', type=str, metavar='PATH',
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
+    parser.add_argument('--eval', action='store_true', help='Perform evaluation only')
     parser.add_argument('--tag', help='tag of experiment')
 
     # distributed training
@@ -108,9 +111,8 @@ def train(config, logger, wandb_logger):
 
     if config.MODEL.RESUME:
         load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, scaler, logger)
-        loss = validate(config, data_loader_val, model, logger, wandb_logger)
-        logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}%")
         if config.EVAL_MODE:
+            visualize(config, data_loader_val, model)
             return
 
     logger.info("Start training")
@@ -148,12 +150,13 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
     start = time.time()
     end = time.time()
-    for idx, (img, mask) in enumerate(data_loader, start=1):
-        img = img.cuda(non_blocking=True)
+    for idx, (x, mask) in enumerate(data_loader, start=1):
+        x = x.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            loss = model(img, mask)
+            x_rec = model(x, mask)
+            loss = model.loss(x, x_rec, mask)
 
         if config.TRAIN.ACCUMULATION_STEPS > 1:
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
@@ -182,7 +185,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
         torch.cuda.synchronize()
 
-        loss_meter.update(loss.item(), img.size(0))
+        loss_meter.update(loss.item(), x.size(0))
         norm_meter.update(grad_norm)
         loss_scale_meter.update(scaler.get_scale())
         batch_time.update(time.time() - end)
@@ -224,16 +227,17 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
     loss_meter = AverageMeter()
 
     end = time.time()
-    for idx, (img, mask) in enumerate(data_loader, start=1):
-        img = img.cuda(non_blocking=True)
+    for idx, (x, mask) in enumerate(data_loader, start=1):
+        x = x.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            loss = model(img, mask)
+            x_rec = model(x, mask)
+            loss = model.loss(x, x_rec, mask)
 
         loss = reduce_tensor(loss)
 
-        loss_meter.update(loss.item(), img.size(0))
+        loss_meter.update(loss.item(), x.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -256,6 +260,21 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
         )
 
     return loss_meter.avg
+
+
+@torch.no_grad()
+def visualize(config, data_loader, model):  
+    model.eval()
+
+    for i, (img, mask) in enumerate(data_loader):
+        img = img.cuda(non_blocking=True)
+        mask = mask.cuda(non_blocking=True)
+
+        x_rec = model(img, mask)
+
+        for j, _x_rec in enumerate(x_rec):
+            output_name = Path(config.MODEL.RESUME).with_suffix('') / f'{i * len(data_loader) + j}.jpg'
+            ts.save(_x_rec, output_name)
 
 
 def main():
