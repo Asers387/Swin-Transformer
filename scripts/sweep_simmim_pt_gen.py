@@ -81,7 +81,7 @@ SWEEP_CONFIG = {
                     'value': 10
                 },
                 'BASE_LR': {
-                    'distribution': 'log_uniform',
+                    'distribution': 'uniform',
                     'min': 1e-4, 'max': 1.0
                 },
                 'MIN_LR': {
@@ -126,7 +126,7 @@ SWEEP_CONFIG = {
                             'min': 0.85, 'max': 0.95
                         },
                         'BETA_2': {
-                            'distribution': 'log_uniform',
+                            'distribution': 'uniform',
                             'min': 0.9, 'max': 0.999
                         }
                     }
