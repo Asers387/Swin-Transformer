@@ -157,6 +157,9 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
             _, loss = model(x, mask)
 
+        if torch.isnan(loss).any():
+            raise Exception('Loss is NaN')
+
         if config.TRAIN.ACCUMULATION_STEPS > 1:
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
             scaler.scale(loss).backward()

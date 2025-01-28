@@ -113,9 +113,13 @@ def main(config=None):
     # print config
     logger.info(config.dump())
 
-    train(config, logger, wandb_logger)
+    try:
+        train(config, logger, wandb_logger)
+        exit_code = 0
+    except:
+        exit_code = 1
 
-    wandb.finish()
+    wandb.finish(exit_code)
     torch.distributed.destroy_process_group()
 
 
