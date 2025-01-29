@@ -6,7 +6,9 @@
 # --------------------------------------------------------
 
 import numpy as np
+from PIL import Image
 
+import torch
 import torch.distributed as dist
 import torchvision.transforms as T
 from torch.utils.data import DataLoader, DistributedSampler
@@ -59,19 +61,23 @@ class SimMIMTransform:
         
         mean, std = get_mean_std(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH)
 
+        self.placeholder_img = torch.empty((8736, 11648)) # Needed for torchvision, more efficient to create once
+        self.crop_shape = config.DATA.IMG_SIZE
+
         if split_name == 'train':
-            self.transform_img = T.Compose([
-                T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-                T.RandomResizedCrop(config.DATA.IMG_SIZE, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.)),
+            self.transform_crop = self._random_crop
+
+            self.transform_compose = T.Compose([
+                T.Resize((config.DATA.IMG_SIZE, config.DATA.IMG_SIZE)),
                 T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize(mean=mean, std=std)
             ])
             random_mask = True
         elif split_name == 'val' or split_name == 'test':
-            self.transform_img = T.Compose([
-                T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-                T.CenterCrop(config.DATA.IMG_SIZE),
+            self.transform_crop = self._center_crop
+
+            self.transform_compose = T.Compose([
                 T.ToTensor(),
                 T.Normalize(mean=mean, std=std)
             ])
@@ -86,9 +92,29 @@ class SimMIMTransform:
             mask_ratio=config.DATA.MASK_RATIO,
             random_mask=random_mask
         )
+
+    def _crop(self, data, idx, i, j, h, w):
+        img = data[idx, i:i+h, j:j+w]
+        img = Image.fromarray(img)
+        return img
     
-    def __call__(self, img):
-        img = self.transform_img(img)
+    def _random_crop(self, data, idx):
+        i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.))
+
+        img = self._crop(data, idx, i, j, h, w)
+        return img
+
+    def _center_crop(self, data, idx):
+        img_h, img_w = self.placeholder_img.shape
+        crop_top = int(round((img_h - self.crop_shape) / 2.0))
+        crop_left = int(round((img_w - self.crop_shape) / 2.0))
+        
+        img = self._crop(data, idx, crop_top, crop_left, self.crop_shape, self.crop_shape)
+        return img
+
+    def __call__(self, data, idx):
+        img = self.transform_crop(data, idx)
+        img = self.transform_compose(img)
         mask = self.mask_generator()
         
         return img, mask

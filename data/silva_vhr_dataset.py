@@ -1,3 +1,4 @@
+import h5py
 import json
 
 from pathlib import Path
@@ -14,24 +15,17 @@ class SilvaVHR(Dataset):
         
         self.root_path = Path(root_path)
 
-        split_json_name = (self.root_path / split_path / split_name).with_suffix('.json')
-        with open(split_json_name, 'r') as f:
-            self.data = json.loads(f.read())
+        self._f_data = h5py.File(self.root_path / split_path / 'vhr-silva.hdf5', 'r')
+        self.data = self._f_data[split_name]
 
         self.transform = transform
         self.target_transform = target_transform
     
     def __len__(self):
         return len(self.data)
-    
-    def get_image(self, image_path):
-        image = Image.open(image_path)
-        image, mask = self.transform(image)
-        return image, mask
-            
+                
     def __getitem__(self, idx):
-        datum = self.data[idx]
-        image, mask = self.get_image(self.root_path / datum['image_lr'])
+        image, mask = self.transform(self.data, idx)
         return image, mask
     
 
