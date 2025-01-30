@@ -62,13 +62,13 @@ class SimMIMTransform:
         mean, std = get_mean_std(config.DATA.DATA_PATH, config.DATA.SPLIT_PATH)
 
         self.placeholder_img = torch.empty((8736, 11648)) # Needed for torchvision, more efficient to create once
-        self.crop_shape = config.DATA.IMG_SIZE
+        self.crop_shape = config.DATA.IMG_SIZE * 8
 
         if split_name == 'train':
             self.transform_crop = self._random_crop
 
             self.transform_compose = T.Compose([
-                T.Resize((config.DATA.IMG_SIZE, config.DATA.IMG_SIZE)),
+                T.Resize((self.crop_shape, self.crop_shape)),
                 T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize(mean=mean, std=std)
@@ -99,7 +99,8 @@ class SimMIMTransform:
         return img
     
     def _random_crop(self, data, idx):
-        i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.))
+        # i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.))
+        i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67 / 16, 1. / 16), ratio=(3. / 4., 4. / 3.))
 
         img = self._crop(data, idx, i, j, h, w)
         return img

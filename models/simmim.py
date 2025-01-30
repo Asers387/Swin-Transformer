@@ -121,30 +121,49 @@ class SimMIM(nn.Module):
         self.encoder = encoder
         self.encoder_stride = encoder_stride
 
-        self.decoder = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.encoder.num_features,
-                out_channels=self.encoder_stride ** 2 * 3, kernel_size=1),
-            nn.PixelShuffle(self.encoder_stride),
-        )
+        # TODO test with predicting masked patches at VHR resolution instead of separate decoders, probably easier to start with
+        # TODO test with lowering channel size or constant
+            # TODO easier to output color at beginning of decoder? when at 4 channels, not practical to use decomposed transpose convolution
+        # TODO test with entire image of unmasked patches or individual unmasked patches (unmasked ratio equal to masked ratio)
+
+        # self.decoder = nn.Sequential(
+        #     nn.Conv2d(
+        #         in_channels=self.encoder.num_features,
+        #         out_channels=self.encoder_stride ** 2 * 3, kernel_size=1),
+        #     nn.PixelShuffle(self.encoder_stride),
+        # )
+
+        num_features = self.encoder.num_features
+        
+        # TODO add layernorm between layers?
+        decoder_layers = []
+        for i in range(8):
+            decoder_layers.append(nn.Conv2d(num_features, 2 * num_features, kernel_size=1))
+            decoder_layers.append(nn.PixelShuffle(2))
+            num_features = num_features // 2
+            # decoder_layers.append(nn.LayerNorm(num_features))
+        decoder_layers.append(nn.Conv2d(num_features, 3, kernel_size=1))
+
+        self.decoder = nn.Sequential(*decoder_layers)
 
         self.in_chans = in_chans
         self.patch_size = patch_size
 
-    def forward(self, x, mask):
-        z = self.encoder(x, mask)
-        x_rec = self.decoder(z)
+    # TODO might want to test encoder without masking for super-resolution, adds complexity as is
+    def forward(self, img_lr, img_vhr, mask_lr):
+        z = self.encoder(img_lr, mask_lr)
+        img_vhr_rec = self.decoder(z)
         
-        mask = mask.repeat_interleave(self.patch_size, 1).repeat_interleave(self.patch_size, 2).unsqueeze(1).contiguous()
+        mask_vhr = mask_lr.repeat_interleave(self.patch_size * 8, 1).repeat_interleave(self.patch_size * 8, 2).unsqueeze(1).contiguous()
         
         # norm target as prompted
         if self.config.NORM_TARGET.ENABLE:
-            x = norm_targets(x, self.config.NORM_TARGET.PATCH_SIZE)
+            img_vhr = norm_targets(img_vhr, self.config.NORM_TARGET.PATCH_SIZE * 8)
         
-        loss_recon = F.l1_loss(x, x_rec, reduction='none')
-        loss = (loss_recon * mask).sum() / (mask.sum() + 1e-5) / self.in_chans
+        loss_recon = F.l1_loss(img_vhr, img_vhr_rec, reduction='none')
+        loss = (loss_recon * mask_vhr).sum() / (mask_vhr.sum() + 1e-5) / self.in_chans
         
-        return x_rec, loss
+        return img_vhr_rec, loss
 
     @torch.jit.ignore
     def no_weight_decay(self):

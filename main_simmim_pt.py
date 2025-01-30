@@ -150,12 +150,13 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
     start = time.time()
     end = time.time()
-    for idx, (x, mask) in enumerate(data_loader, start=1):
-        x = x.cuda(non_blocking=True)
-        mask = mask.cuda(non_blocking=True)
+    for idx, (img_lr, img_vhr, mask_lr) in enumerate(data_loader, start=1):
+        img_lr = img_lr.cuda(non_blocking=True)
+        img_vhr = img_vhr.cuda(non_blocking=True)
+        mask_lr = mask_lr.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            _, loss = model(x, mask)
+            _, loss = model(img_lr, img_vhr, mask_lr)
 
         if torch.isnan(loss).any():
             raise Exception('Loss is NaN')
@@ -187,7 +188,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
 
         torch.cuda.synchronize()
 
-        loss_meter.update(loss.item(), x.size(0))
+        loss_meter.update(loss.item(), img_lr.size(0))
         norm_meter.update(grad_norm)
         loss_scale_meter.update(scaler.get_scale())
         batch_time.update(time.time() - end)
@@ -229,16 +230,17 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
     loss_meter = AverageMeter()
 
     end = time.time()
-    for idx, (x, mask) in enumerate(data_loader, start=1):
-        x = x.cuda(non_blocking=True)
+    for idx, (img_lr, img_vhr, mask) in enumerate(data_loader, start=1):
+        img_lr = img_lr.cuda(non_blocking=True)
+        img_vhr = img_vhr.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            _, loss = model(x, mask)
+            _, loss = model(img_lr, img_vhr, mask)
 
         loss = reduce_tensor(loss)
 
-        loss_meter.update(loss.item(), x.size(0))
+        loss_meter.update(loss.item(), img_lr.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -267,15 +269,16 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
 def visualize(config, data_loader, model):  
     model.eval()
 
-    for i, (x, mask) in enumerate(data_loader):
-        x = x.cuda(non_blocking=True)
+    for i, (img_lr, img_vhr, mask) in enumerate(data_loader):
+        img_lr = img_lr.cuda(non_blocking=True)
+        img_vhr = img_vhr.cuda(non_blocking=True)
         mask = mask.cuda(non_blocking=True)
 
-        x_rec, _ = model(x, mask)
+        x_vhr_rec, _ = model(img_lr, img_vhr, mask)
 
-        for j, _x_rec in enumerate(x_rec):
+        for j, _x_vhr_rec in enumerate(x_vhr_rec):
             output_name = Path(config.MODEL.RESUME).with_suffix('') / f'{i * len(data_loader) + j}.jpg'
-            ts.save(_x_rec, output_name)
+            ts.save(_x_vhr_rec, output_name)
 
 
 def main():
