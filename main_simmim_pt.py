@@ -125,7 +125,7 @@ def train(config, logger, wandb_logger):
             save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
 
         loss = validate(config, data_loader_val, model, epoch, logger, wandb_logger)
-        # logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
+        logger.info(f"Loss of the network on the {len(data_loader_val.dataset)} val images: {loss:.4f}")
 
         if config.TRAIN.LR_SCHEDULER.NAME == 'plateau':
             lr_scheduler.step(epoch, loss)
@@ -148,6 +148,8 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
     norm_meter = AverageMeter()
     loss_scale_meter = AverageMeter()
 
+    accum_loss = 0.0
+
     start = time.time()
     end = time.time()
     for idx, (img_lr, img_vhr, mask_lr) in enumerate(data_loader, start=1):
@@ -161,21 +163,11 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         if torch.isnan(loss).any():
             raise Exception('Loss is NaN')
 
-        if config.TRAIN.ACCUMULATION_STEPS > 1:
-            loss = loss / config.TRAIN.ACCUMULATION_STEPS
-            scaler.scale(loss).backward()
-            if config.TRAIN.CLIP_GRAD:
-                scaler.unscale_(optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
-            else:
-                grad_norm = get_grad_norm(model.parameters())
-            if idx % config.TRAIN.ACCUMULATION_STEPS == 0:
-                scaler.step(optimizer)
-                optimizer.zero_grad()
-                scaler.update()
-                lr_scheduler.step_update(epoch * num_steps + idx)
-        else:
-            scaler.scale(loss).backward()
+        loss = loss / config.TRAIN.ACCUMULATION_STEPS
+        accum_loss += loss.item()
+        scaler.scale(loss).backward()
+
+        if idx % config.TRAIN.ACCUMULATION_STEPS == 0:
             if config.TRAIN.CLIP_GRAD:
                 scaler.unscale_(optimizer)
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
@@ -186,40 +178,42 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
             scaler.update()
             lr_scheduler.step_update(epoch * num_steps + idx)
 
-        torch.cuda.synchronize()
+            torch.cuda.synchronize()
 
-        loss_meter.update(loss.item(), img_lr.size(0))
-        norm_meter.update(grad_norm)
-        loss_scale_meter.update(scaler.get_scale())
-        batch_time.update(time.time() - end)
-        end = time.time()
+            loss_meter.update(accum_loss, img_lr.size(0))
+            norm_meter.update(grad_norm)
+            loss_scale_meter.update(scaler.get_scale())
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-        if idx % config.PRINT_FREQ == 0 or idx == len(data_loader):
-            lr = optimizer.param_groups[0]['lr']
-            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-            etas = batch_time.avg * (num_steps - idx)
-            logger.info(
-                f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
-                f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
-                f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
-                f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
-                f'loss_scale {loss_scale_meter.val:.4f} ({loss_scale_meter.avg:.4f})\t'
-                f'mem {memory_used:.0f}MB')
+            if idx % config.PRINT_FREQ == 0 or idx == len(data_loader):
+                lr = optimizer.param_groups[0]['lr']
+                memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+                etas = batch_time.avg * (num_steps - idx)
+                logger.info(
+                    f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
+                    f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
+                    f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
+                    f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
+                    f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
+                    f'loss_scale {loss_scale_meter.val:.4f} ({loss_scale_meter.avg:.4f})\t'
+                    f'mem {memory_used:.0f}MB')
+            
+            accum_loss = 0.0
             
     if dist.get_rank() == 0:
         wandb_logger.log(
             {
                 'lr': lr,
-                'train_loss': loss_meter.val,
-                'grad_norm': norm_meter.val,
-                'loss_scale': loss_scale_meter.val
+                'train_loss': loss_meter.avg,
+                'grad_norm': norm_meter.avg,
+                'loss_scale': loss_scale_meter.avg
             },
             step=epoch
         )
 
     epoch_time = time.time() - start
-    # logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
+    logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
 
 @torch.no_grad()
@@ -230,13 +224,13 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
     loss_meter = AverageMeter()
 
     end = time.time()
-    for idx, (img_lr, img_vhr, mask) in enumerate(data_loader, start=1):
+    for idx, (img_lr, img_vhr, mask_lr) in enumerate(data_loader, start=1):
         img_lr = img_lr.cuda(non_blocking=True)
         img_vhr = img_vhr.cuda(non_blocking=True)
-        mask = mask.cuda(non_blocking=True)
+        mask_lr = mask_lr.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            _, loss = model(img_lr, img_vhr, mask)
+            _, loss = model(img_lr, img_vhr, mask_lr)
 
         loss = reduce_tensor(loss)
 
@@ -269,12 +263,12 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
 def visualize(config, data_loader, model):  
     model.eval()
 
-    for i, (img_lr, img_vhr, mask) in enumerate(data_loader):
+    for i, (img_lr, img_vhr, mask_lr) in enumerate(data_loader):
         img_lr = img_lr.cuda(non_blocking=True)
         img_vhr = img_vhr.cuda(non_blocking=True)
-        mask = mask.cuda(non_blocking=True)
+        mask_lr = mask_lr.cuda(non_blocking=True)
 
-        x_vhr_rec, _ = model(img_lr, img_vhr, mask)
+        x_vhr_rec, _ = model(img_lr, img_vhr, mask_lr)
 
         for j, _x_vhr_rec in enumerate(x_vhr_rec):
             output_name = Path(config.MODEL.RESUME).with_suffix('') / f'{i * len(data_loader) + j}.jpg'

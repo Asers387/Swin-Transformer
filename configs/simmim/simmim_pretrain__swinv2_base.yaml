@@ -24,7 +24,7 @@ TRAIN:
   MIN_LR: 1e-6
   WARMUP_LR: 1e-6
   WEIGHT_DECAY: 0.3
-  ACCUMULATION_STEPS: 1
+  ACCUMULATION_STEPS: 4
   LR_SCHEDULER:
     NAME: 'plateau'
     PATIENCE_T: 10
@@ -32,6 +32,6 @@ TRAIN:
     COOLDOWN_T: 10
     MODE: 'min'
     EARLY_STOP: True
-PRINT_FREQ: 10
+PRINT_FREQ: 20
 SAVE_FREQ: 400
 TAG: simmim_pretrain__swinv2_base

@@ -16,10 +16,7 @@ class SilvaVHR(Dataset):
         
         self.root_path = Path(root_path)
 
-        # TODO check if dataloader uses processes, as threads don't work
         self._f_data = h5py.File(self.root_path / split_path / 'vhr-silva.hdf5', 'r')
-        # self._f_data = h5py.File(self.root_path / split_path / 'vhr-silva.hdf5', 'r', driver='mpio')
-        # self._f_data = h5py.File(self.root_path / split_path / 'vhr-silva.hdf5', 'r', swmr=True)
         self.data = self._f_data[split_name]
 
         self.transform = transform
