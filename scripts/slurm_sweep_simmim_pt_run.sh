@@ -15,5 +15,4 @@ docker run --gpus all -e CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES -e WANDB_API
 	vhr-mim torchrun sweep_simmim_pt_run.py \
 		--data-path /data/vhr-silva \
 		--split-path splits/forests_snowless/vhr-silva \
-                --sweep-id 532a2fmf
-
+                --sweep-id mlvyc2ob

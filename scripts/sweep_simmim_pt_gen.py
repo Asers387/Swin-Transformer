@@ -29,11 +29,11 @@ SWEEP_CONFIG = {
                         'NORM_TARGET': {
                             'parameters': {
                                 'ENABLE': {
-                                    'value': True
+                                    'value': False # 'value': True
                                 },
-                                'PATCH_SIZE': {
-                                    'values': list(range(7, 128, 8))
-                                }
+                                # 'PATCH_SIZE': {
+                                #     'values': list(range(7, 128, 8))
+                                # }
                             }
                         }
                     }
@@ -41,7 +41,7 @@ SWEEP_CONFIG = {
                 'SWINV2': {
                     'parameters': {
                         'EMBED_DIM': {
-                            'value': 128
+                            'values': [128, 256] # 'value' :128
                         },
                         'DEPTHS': {
                             'value': [2, 2, 18, 2]
@@ -59,16 +59,19 @@ SWEEP_CONFIG = {
         'DATA': {
             'parameters': {
                 'BATCH_SIZE': {
-                    'values': [8, 16, 24, 32]
+                    'value': 16 # 'values': [8, 16, 32]
                 },
                 'IMG_SIZE': {
                     'value': 256
                 },
                 'MASK_PATCH_SIZE': {
-                    'values': [8, 16, 32, 64]
+                    'value': 4 # 'values': [8, 16, 32, 64]
                 },
                 'MASK_RATIO': {
-                    'values': [0.1, 0.2, 0.3, 0.4, 0.5]
+                    'value': 0.5 # 'values': [0.1, 0.2, 0.3, 0.4, 0.5]
+                },
+                'NUM_WORKERS': {
+                    'value': 16
                 }
             }
         },
@@ -100,13 +103,13 @@ SWEEP_CONFIG = {
                             'value': 'plateau'
                         },
                         'PATIENCE_T': {
-                            'values': [5, 10, 20]
+                            'values': [10, 20]
                         },
                         'THRESHOLD': {
                             'value': 1e-2
                         },
                         'COOLDOWN_T': {
-                            'values': [0, 5, 10]
+                            'values': [0, 10]
                         },
                         'MODE': {
                             'value': 'min'
@@ -130,6 +133,9 @@ SWEEP_CONFIG = {
                             'min': 0.9, 'max': 0.999
                         }
                     }
+                },
+                'ACCUMULATION_STEPS': {
+                    'values': [1, 4, 8, 16]
                 }
             }
         },
