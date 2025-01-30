@@ -135,13 +135,32 @@ class SimMIM(nn.Module):
 
         num_features = self.encoder.num_features
         
-        # TODO add layernorm between layers?
+        class EfficientUpscale(nn.Module):
+            def __init__(self, num_features, upscale_factor=2, apply_layer_norm=False):
+                super().__init__()
+
+                assert num_features % upscale_factor == 0, 'Invalid upsample factor'
+
+                self.conv2d = nn.Conv2d(num_features, upscale_factor * num_features, kernel_size=1)
+                self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
+                self.layer_norm = nn.LayerNorm(num_features // upscale_factor)
+
+                self.apply_layer_norm = apply_layer_norm
+            
+            def forward(self, x):
+                x = self.conv2d(x)
+                x = self.pixel_shuffle(x)
+
+                if self.apply_layer_norm:
+                    x = x.permute(0, 2, 3, 1)
+                    x = self.layer_norm(x)
+                    x = x.permute(0, 3, 1, 2)
+                return x
+
         decoder_layers = []
         for i in range(8):
-            decoder_layers.append(nn.Conv2d(num_features, 2 * num_features, kernel_size=1))
-            decoder_layers.append(nn.PixelShuffle(2))
+            decoder_layers.append(EfficientUpscale(num_features, upscale_factor=2, apply_layer_norm=False))
             num_features = num_features // 2
-            # decoder_layers.append(nn.LayerNorm(num_features))
         decoder_layers.append(nn.Conv2d(num_features, 3, kernel_size=1))
 
         self.decoder = nn.Sequential(*decoder_layers)
