@@ -24,24 +24,24 @@ SWEEP_CONFIG = {
                     'distribution': 'uniform',
                     'min': 0.0, 'max': 0.5
                 },
-                'SIMMIM': {
-                    'parameters': {
-                        'NORM_TARGET': {
-                            'parameters': {
-                                'ENABLE': {
-                                    'value': False # 'value': True
-                                },
-                                # 'PATCH_SIZE': {
-                                #     'values': list(range(7, 128, 8))
-                                # }
-                            }
-                        }
-                    }
-                },
+                # 'SIMMIM': {
+                #     'parameters': {
+                #         'NORM_TARGET': {
+                #             'parameters': {
+                #                 'ENABLE': {
+                #                     'value': False
+                #                 },
+                #                 'PATCH_SIZE': {
+                #                     'values': list(range(7, 128, 8))
+                #                 }
+                #             }
+                #         }
+                #     }
+                # },
                 'SWINV2': {
                     'parameters': {
                         'EMBED_DIM': {
-                            'values': [128, 256] # 'value' :128
+                            'values': [128, 256] # 'value': 128
                         },
                         'DEPTHS': {
                             'value': [2, 2, 18, 2]

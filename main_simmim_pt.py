@@ -131,6 +131,8 @@ def train(config, logger, wandb_logger):
             lr_scheduler.step(epoch, loss)
 
             if config.TRAIN.LR_SCHEDULER.EARLY_STOP and lr_scheduler.has_hit_min(epoch, loss):
+                if dist.get_rank() == 0 and config.SAVE_FREQ > 0:
+                    save_checkpoint(config, epoch, model_without_ddp, 0., optimizer, lr_scheduler, scaler, logger)
                 break
 
     total_time = time.time() - start_time
