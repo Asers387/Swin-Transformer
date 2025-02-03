@@ -45,7 +45,7 @@ SWEEP_CONFIG = {
         'DATA': {
             'parameters': {
                 'BATCH_SIZE': {
-                    'value': 1
+                    'value': 4
                 },
                 'IMG_SIZE': {
                     'value': 192
