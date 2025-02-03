@@ -24,24 +24,10 @@ SWEEP_CONFIG = {
                     'distribution': 'uniform',
                     'min': 0.0, 'max': 0.5
                 },
-                # 'SIMMIM': {
-                #     'parameters': {
-                #         'NORM_TARGET': {
-                #             'parameters': {
-                #                 'ENABLE': {
-                #                     'value': False
-                #                 },
-                #                 'PATCH_SIZE': {
-                #                     'values': list(range(7, 128, 8))
-                #                 }
-                #             }
-                #         }
-                #     }
-                # },
                 'SWINV2': {
                     'parameters': {
                         'EMBED_DIM': {
-                            'values': [128, 256] # 'value': 128
+                            'value': 128
                         },
                         'DEPTHS': {
                             'value': [2, 2, 18, 2]
@@ -50,7 +36,7 @@ SWEEP_CONFIG = {
                             'value': [4, 8, 16, 32]
                         },
                         'WINDOW_SIZE': {
-                            'values': [8, 16]
+                            'value': 12
                         }
                     }
                 }
@@ -59,16 +45,16 @@ SWEEP_CONFIG = {
         'DATA': {
             'parameters': {
                 'BATCH_SIZE': {
-                    'value': 16 # 'values': [8, 16, 32]
+                    'value': 1
                 },
                 'IMG_SIZE': {
-                    'value': 256
+                    'value': 192
                 },
                 'MASK_PATCH_SIZE': {
-                    'value': 4 # 'values': [8, 16, 32, 64]
+                    'value': 4 # 'values': [4, 8, 16, 32, 64]
                 },
                 'MASK_RATIO': {
-                    'value': 0.5 # 'values': [0.1, 0.2, 0.3, 0.4, 0.5]
+                    'value': 0.5
                 },
                 'NUM_WORKERS': {
                     'value': 16
@@ -84,8 +70,7 @@ SWEEP_CONFIG = {
                     'value': 10
                 },
                 'BASE_LR': {
-                    'distribution': 'uniform',
-                    'min': 1e-4, 'max': 1.0
+                    'values': [1e-4, 1e-3, 1e-2, 1e-1]
                 },
                 'MIN_LR': {
                     'value': 1e-6
@@ -135,12 +120,12 @@ SWEEP_CONFIG = {
                     }
                 },
                 'ACCUMULATION_STEPS': {
-                    'values': [1, 4, 8, 16]
+                    'values': [1, 4, 8]
                 }
             }
         },
         'PRINT_FREQ': {
-            'value': 100
+            'value': 20
         },
         'SAVE_FREQ': {
             'value': -1

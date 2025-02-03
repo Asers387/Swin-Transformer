@@ -141,7 +141,7 @@ class SimMIM(nn.Module):
 
                 assert num_features % upscale_factor == 0, 'Invalid upsample factor'
 
-                self.conv2d = nn.Conv2d(num_features, upscale_factor * num_features, kernel_size=1)
+                self.conv2d = nn.Conv2d(num_features, num_features * upscale_factor**2, kernel_size=1)
                 self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
 
                 # self.layer_norm = nn.LayerNorm(num_features // upscale_factor)
@@ -158,7 +158,7 @@ class SimMIM(nn.Module):
         decoder_layers = []
         for i in range(8):
             decoder_layers.append(EfficientUpscale(num_features, upscale_factor=2))
-            num_features = num_features // 2
+            # num_features = num_features // 2
         decoder_layers.append(nn.Conv2d(num_features, 3, kernel_size=1))
 
         self.decoder = nn.Sequential(*decoder_layers)
