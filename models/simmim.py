@@ -180,7 +180,7 @@ class SimMIM(nn.Module):
         loss_recon = F.l1_loss(img_vhr, img_vhr_rec, reduction='none')
         loss = (loss_recon * mask_vhr).sum() / (mask_vhr.sum() + 1e-5) / self.in_chans
         
-        return img_vhr_rec, loss
+        return img_vhr * (1. - mask_vhr), img_vhr_rec * mask_vhr, loss
 
     @torch.jit.ignore
     def no_weight_decay(self):

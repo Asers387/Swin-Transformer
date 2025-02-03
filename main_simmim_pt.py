@@ -28,7 +28,6 @@ from utils_simmim import load_checkpoint, save_checkpoint, get_grad_norm, auto_r
 
 import wandb
 import yaml
-import torchshow as ts
 from pathlib import Path
 
 # pytorch major version (1.x or 2.x)
@@ -160,7 +159,7 @@ def train_one_epoch(config, model, data_loader, optimizer, epoch, lr_scheduler, 
         mask_lr = mask_lr.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            _, loss = model(img_lr, img_vhr, mask_lr)
+            _, _, loss = model(img_lr, img_vhr, mask_lr)
 
         if torch.isnan(loss).any():
             raise Exception('Loss is NaN')
@@ -232,7 +231,7 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
         mask_lr = mask_lr.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            _, loss = model(img_lr, img_vhr, mask_lr)
+            _, _, loss = model(img_lr, img_vhr, mask_lr)
 
         loss = reduce_tensor(loss)
 
@@ -262,19 +261,38 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
 
 
 @torch.no_grad()
-def visualize(config, data_loader, model):  
+def visualize(config, data_loader, model):
+    from torchvision.utils import save_image
+    from tqdm import tqdm
+    
     model.eval()
 
-    for i, (img_lr, img_vhr, mask_lr) in enumerate(data_loader):
+    output_folder = Path(config.MODEL.RESUME).with_suffix('')
+
+    for i, (img_lr, img_vhr, mask_lr) in tqdm(enumerate(data_loader), 'Batches', total=len(data_loader)):
         img_lr = img_lr.cuda(non_blocking=True)
         img_vhr = img_vhr.cuda(non_blocking=True)
         mask_lr = mask_lr.cuda(non_blocking=True)
 
-        x_vhr_rec, _ = model(img_lr, img_vhr, mask_lr)
+        x_vhr, x_vhr_rec, _ = model(img_lr, img_vhr, mask_lr)
 
-        for j, _x_vhr_rec in enumerate(x_vhr_rec):
-            output_name = Path(config.MODEL.RESUME).with_suffix('') / f'{i * len(data_loader) + j}.jpg'
-            ts.save(_x_vhr_rec, output_name)
+        mean = torch.tensor(data_loader.dataset.transform.transform_compose.transforms[1].mean).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).cuda()
+        std = torch.tensor(data_loader.dataset.transform.transform_compose.transforms[1].std).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).cuda()
+
+        for j, (_x_vhr, _x_vhr_rec) in enumerate(zip(x_vhr, x_vhr_rec)):
+            file_name_prefix = f'{i * len(x_vhr) + j}'
+
+            file_name_input = output_folder / f'{file_name_prefix}_input.jpg'
+            file_name_output = output_folder / f'{file_name_prefix}_output.jpg'
+            file_name_both = output_folder / f'{file_name_prefix}_both.jpg'
+
+            _x_vhr_both = (_x_vhr + _x_vhr_rec) * std + mean
+            _x_vhr = _x_vhr * std + mean
+            _x_vhr_rec = _x_vhr_rec * std + mean
+
+            save_image(_x_vhr, file_name_input)
+            save_image(_x_vhr_rec, file_name_output)
+            save_image(_x_vhr_both, file_name_both)
 
 
 def main():
