@@ -132,35 +132,42 @@ class SimMIM(nn.Module):
         #         out_channels=self.encoder_stride ** 2 * 3, kernel_size=1),
         #     nn.PixelShuffle(self.encoder_stride),
         # )
+        
+        # class EfficientUpscale(nn.Module):
+        #     def __init__(self, num_features, upscale_factor=2):
+        #         super().__init__()
+
+        #         assert num_features % upscale_factor == 0, 'Invalid upsample factor'
+
+        #         self.conv2d = nn.Conv2d(num_features, num_features * upscale_factor**2, kernel_size=1)
+        #         self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
+
+        #         # self.layer_norm = nn.LayerNorm(num_features // upscale_factor)
+
+        #     def forward(self, x):
+        #         x = self.conv2d(x)
+        #         x = self.pixel_shuffle(x)
+
+        #         # x = x.permute(0, 2, 3, 1)
+        #         # x = self.layer_norm(x)
+        #         # x = x.permute(0, 3, 1, 2)
+        #         return x
+
+        # for i in range(4):
+        #     for j in range(2):
+        #         decoder_layers.append(EfficientUpscale(num_features, upscale_factor=2))
+        #     num_features = num_features // 2
 
         num_features = self.encoder.num_features
-        
-        class EfficientUpscale(nn.Module):
-            def __init__(self, num_features, upscale_factor=2):
-                super().__init__()
-
-                assert num_features % upscale_factor == 0, 'Invalid upsample factor'
-
-                self.conv2d = nn.Conv2d(num_features, num_features * upscale_factor**2, kernel_size=1)
-                self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
-
-                # self.layer_norm = nn.LayerNorm(num_features // upscale_factor)
-
-            def forward(self, x):
-                x = self.conv2d(x)
-                x = self.pixel_shuffle(x)
-
-                # x = x.permute(0, 2, 3, 1)
-                # x = self.layer_norm(x)
-                # x = x.permute(0, 3, 1, 2)
-                return x
 
         decoder_layers = []
-        for i in range(8):
-            decoder_layers.append(EfficientUpscale(num_features, upscale_factor=2))
-            # num_features = num_features // 2
+        for i in range(4):
+            decoder_layers.append(nn.Conv2d(num_features, num_features * 4, kernel_size=1))
+            decoder_layers.append(nn.PixelShuffle(2))
+            decoder_layers.append(nn.Conv2d(num_features, num_features * 2, kernel_size=1))
+            decoder_layers.append(nn.PixelShuffle(2))
+            num_features //= 2
         decoder_layers.append(nn.Conv2d(num_features, 3, kernel_size=1))
-
         self.decoder = nn.Sequential(*decoder_layers)
 
         self.in_chans = in_chans
