@@ -68,10 +68,10 @@ class SimMIMTransform:
             self.transform_crop = self._random_crop
 
             self.transform_compose = T.Compose([
+                T.ToTensor(),
                 T.Resize((self.crop_shape, self.crop_shape)),
                 T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize(mean=mean, std=std)
+                T.Normalize(mean=mean, std=std, inplace=True)
             ])
             random_mask = True
         elif split_name == 'val' or split_name == 'test':
@@ -79,7 +79,7 @@ class SimMIMTransform:
 
             self.transform_compose = T.Compose([
                 T.ToTensor(),
-                T.Normalize(mean=mean, std=std)
+                T.Normalize(mean=mean, std=std, inplace=True)
             ])
             random_mask = False
         else:
@@ -94,9 +94,7 @@ class SimMIMTransform:
         )
 
     def _crop(self, data, idx, i, j, h, w):
-        img = data[idx, i:i+h, j:j+w]
-        img = Image.fromarray(img)
-        return img
+        return data[idx, i:i+h, j:j+w]
     
     def _random_crop(self, data, idx):
         # i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.))
@@ -107,8 +105,8 @@ class SimMIMTransform:
 
     def _center_crop(self, data, idx):
         img_h, img_w = self.placeholder_img.shape
-        crop_top = int(round((img_h - self.crop_shape) / 2.0))
-        crop_left = int(round((img_w - self.crop_shape) / 2.0))
+        crop_top = int(round((img_h - self.crop_shape) / 2))
+        crop_left = int(round((img_w - self.crop_shape) / 2))
         
         img = self._crop(data, idx, crop_top, crop_left, self.crop_shape, self.crop_shape)
         return img
