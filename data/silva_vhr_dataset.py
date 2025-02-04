@@ -14,25 +14,18 @@ class SilvaVHR(Dataset):
     def __init__(self, root_path, split_path, split_name, transform, target_transform=None):
         super().__init__()
         
-        # Potential fix for efficient multiprocessing with h5py
-        # https://discuss.pytorch.org/t/dataloader-when-num-worker-0-there-is-bug/25643/16
-        self.data = None
-        self.data_path = Path(root_path) / split_path / 'vhr-silva.hdf5'
-        self.split_name = split_name
+        self.root_path = Path(root_path)
 
-        data = h5py.File(self.data_path, 'r')[self.split_name]
-        self.len_data = len(data)
+        self._f_data = h5py.File(self.root_path / split_path / 'vhr-silva.hdf5', 'r')
+        self.data = self._f_data[split_name]
 
         self.transform = transform
         self.target_transform = target_transform
     
     def __len__(self):
-        return self.len_data
+        return len(self.data)
                 
     def __getitem__(self, idx):
-        if self.data is None:
-            self.data = h5py.File(self.data_path, 'r')[self.split_name]
-
         image_vhr, mask_lr = self.transform(self.data, idx)
         image_lr = F.interpolate(image_vhr.unsqueeze(dim=0), scale_factor=(0.125, 0.125), mode='area').squeeze(dim=0)
         return image_lr, image_vhr, mask_lr
