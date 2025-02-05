@@ -14,6 +14,9 @@ try:
 except:
     from torch import inf
 
+from tifffile import TiffPage
+import numpy as np
+
 
 def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger):
     logger.info(f"==============> Resuming form {config.MODEL.RESUME}....................")
@@ -223,3 +226,84 @@ class NativeScalerWithGradNormCount:
 
     def load_state_dict(self, state_dict):
         self._scaler.load_state_dict(state_dict)
+
+
+# Based on https://gist.github.com/rfezzani/b4b8852c5a48a901c1e94e09feb34743
+def get_crop(page: TiffPage, i0, j0, h, w):
+    """Extract a crop from a TIFF image file directory (IFD).
+    
+    Only the tiles englobing the crop area are loaded and not the whole page.
+    This is useful for large Whole slide images that can't fit into RAM.
+
+    Parameters
+    ----------
+    page : TiffPage
+        TIFF image file directory (IFD) from which the crop must be extracted.
+    i0, j0: int
+        Coordinates of the top left corner of the desired crop.
+    h: int
+        Desired crop height.
+    w: int
+        Desired crop width.
+
+    Returns
+    -------
+    out : ndarray of shape (h, w, sampleperpixel)
+        Extracted crop.
+
+    """
+
+    if not page.is_tiled:
+        raise ValueError("Input page must be tiled.")
+
+    im_width = page.imagewidth
+    im_height = page.imagelength
+
+    if h < 1 or w < 1:
+        raise ValueError("h and w must be strictly positive.")
+
+    if i0 < 0 or j0 < 0 or i0 + h >= im_height or j0 + w >= im_width:
+        raise ValueError("Requested crop area is out of image bounds.")
+
+    tile_width, tile_height = page.tilewidth, page.tilelength
+    i1, j1 = i0 + h, j0 + w
+
+    tile_i0, tile_j0 = i0 // tile_height, j0 // tile_width
+    tile_i1, tile_j1 = np.ceil([i1 / tile_height, j1 / tile_width]).astype(int)
+
+    tile_per_line = int(np.ceil(im_width / tile_width))
+
+    out = np.empty(((tile_i1 - tile_i0) * tile_height,
+                    (tile_j1 - tile_j0) * tile_width,
+                    page.samplesperpixel), dtype=page.dtype)
+
+    fh = page.parent.filehandle
+
+    jpegtables = page.tags.get('JPEGTables', None)
+    if jpegtables is not None:
+        jpegtables = jpegtables.value
+
+    for i in range(tile_i0, tile_i1):
+        for j in range(tile_j0, tile_j1):
+            index = int(i * tile_per_line + j)
+
+            offset = page.dataoffsets[index]
+            bytecount = page.databytecounts[index]
+
+            fh.seek(offset)
+            data = fh.read(bytecount)
+            tile, indices, shape = page.decode(
+                data,
+                index,
+                jpegtables=jpegtables,
+                jpegheader=page.jpegheader
+            )
+
+            im_i = (i - tile_i0) * tile_height
+            im_j = (j - tile_j0) * tile_width
+            out[im_i: im_i + tile_height, im_j: im_j + tile_width, :] = tile
+
+    im_i0 = i0 - tile_i0 * tile_height
+    im_j0 = j0 - tile_j0 * tile_width
+
+    return out[im_i0: im_i0 + h, im_j0: im_j0 + w, :]

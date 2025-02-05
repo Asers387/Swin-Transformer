@@ -6,7 +6,6 @@
 # --------------------------------------------------------
 
 import numpy as np
-from PIL import Image
 
 import torch
 import torch.distributed as dist
@@ -15,6 +14,8 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data._utils.collate import default_collate
 
 from data.silva_vhr_dataset import SilvaVHR, get_mean_std
+
+from utils import get_crop
 
 
 class MaskGenerator:
@@ -93,26 +94,26 @@ class SimMIMTransform:
             random_mask=random_mask
         )
 
-    def _crop(self, data, idx, i, j, h, w):
-        return data[idx, i:i+h, j:j+w]
+    def _crop(self, datum, i, j, h, w):
+        return get_crop(datum, i, j, h, w)
     
-    def _random_crop(self, data, idx):
+    def _random_crop(self, datum):
         # i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.))
         i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67 / 16, 1. / 16), ratio=(3. / 4., 4. / 3.))
 
-        img = self._crop(data, idx, i, j, h, w)
+        img = self._crop(datum, i, j, h-1, w-1) # Substraction avoids bug with zero-based index
         return img
 
-    def _center_crop(self, data, idx):
+    def _center_crop(self, datum):
         img_h, img_w = self.placeholder_img.shape
         crop_top = int(round((img_h - self.crop_shape) / 2))
         crop_left = int(round((img_w - self.crop_shape) / 2))
         
-        img = self._crop(data, idx, crop_top, crop_left, self.crop_shape, self.crop_shape)
+        img = self._crop(datum, crop_top, crop_left, self.crop_shape, self.crop_shape)
         return img
 
-    def __call__(self, data, idx):
-        img = self.transform_crop(data, idx)
+    def __call__(self, datum):
+        img = self.transform_crop(datum)
         img = self.transform_compose(img)
         mask = self.mask_generator()
         
