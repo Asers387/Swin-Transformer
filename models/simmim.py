@@ -182,7 +182,7 @@ class SimMIM(nn.Module):
         
         # norm target as prompted
         if self.config.NORM_TARGET.ENABLE:
-            img_vhr = norm_targets(img_vhr, self.config.NORM_TARGET.PATCH_SIZE * 8)
+            img_vhr = norm_targets(img_vhr, self.config.NORM_TARGET.PATCH_SIZE * 8 - 1)
         
         loss_recon = F.l1_loss(img_vhr, img_vhr_rec, reduction='none')
         loss = (loss_recon * mask_vhr).sum() / (mask_vhr.sum() + 1e-5) / self.in_chans
