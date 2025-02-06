@@ -269,6 +269,9 @@ def visualize(config, data_loader, model):
 
     output_folder = Path(config.MODEL.RESUME).with_suffix('')
 
+    mean = torch.tensor(data_loader.dataset.transform.transform_compose.transforms[1].mean).unsqueeze(-1).unsqueeze(-1).cuda()
+    std = torch.tensor(data_loader.dataset.transform.transform_compose.transforms[1].std).unsqueeze(-1).unsqueeze(-1).cuda()
+
     for i, (img_lr, img_vhr, mask_lr) in tqdm(enumerate(data_loader), 'Batches', total=len(data_loader)):
         img_lr = img_lr.cuda(non_blocking=True)
         img_vhr = img_vhr.cuda(non_blocking=True)
@@ -276,23 +279,17 @@ def visualize(config, data_loader, model):
 
         x_vhr, x_vhr_rec, _ = model(img_lr, img_vhr, mask_lr)
 
-        mean = torch.tensor(data_loader.dataset.transform.transform_compose.transforms[1].mean).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).cuda()
-        std = torch.tensor(data_loader.dataset.transform.transform_compose.transforms[1].std).unsqueeze(0).unsqueeze(-1).unsqueeze(-1).cuda()
-
         for j, (_x_vhr, _x_vhr_rec) in enumerate(zip(x_vhr, x_vhr_rec)):
-            file_name_prefix = f'{i * len(x_vhr) + j}'
-
-            file_name_input = output_folder / f'{file_name_prefix}_input.jpg'
-            file_name_output = output_folder / f'{file_name_prefix}_output.jpg'
-            file_name_both = output_folder / f'{file_name_prefix}_both.jpg'
+            idx = i * len(x_vhr) + j
+            file_name = Path(data_loader.dataset.data[idx])
+            file_name = output_folder / file_name.parent.name / f'{file_name.stem}.jpg'
+            file_name.parent.mkdir(parents=True, exist_ok=True)
 
             _x_vhr_both = (_x_vhr + _x_vhr_rec) * std + mean
             _x_vhr = _x_vhr * std + mean
             _x_vhr_rec = _x_vhr_rec * std + mean
 
-            save_image(_x_vhr, file_name_input)
-            save_image(_x_vhr_rec, file_name_output)
-            save_image(_x_vhr_both, file_name_both)
+            save_image([_x_vhr, _x_vhr_rec, _x_vhr_both], file_name)
 
 
 def main():
