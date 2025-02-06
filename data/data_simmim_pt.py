@@ -99,7 +99,7 @@ class SimMIMTransform:
     
     def _random_crop(self, datum):
         # i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67, 1.), ratio=(3. / 4., 4. / 3.))
-        i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.67 / 16, 1. / 16), ratio=(3. / 4., 4. / 3.))
+        i, j, h, w = T.RandomResizedCrop.get_params(self.placeholder_img, scale=(0.33 / 16, 1. / 16), ratio=(3. / 4., 4. / 3.))
 
         img = self._crop(datum, i, j, h, w)
         return img
