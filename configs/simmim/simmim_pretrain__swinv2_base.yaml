@@ -29,7 +29,7 @@ TRAIN:
     NAME: 'plateau'
     PATIENCE_T: 20
     THRESHOLD: 1e-2
-    COOLDOWN_T: 10
+    COOLDOWN_T: 0
     MODE: 'min'
     EARLY_STOP: True
 PRINT_FREQ: 20
