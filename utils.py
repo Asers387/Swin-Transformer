@@ -262,13 +262,13 @@ def get_crop(page: TiffPage, i0, j0, h, w):
     if h < 1 or w < 1:
         raise ValueError("h and w must be strictly positive.")
 
-    if i0 < 0 or j0 < 0 or i0 + h >= im_height or j0 + w >= im_width:
+    if i0 < 0 or j0 < 0 or i0 + h - 1 >= im_height or j0 + w - 1 >= im_width:
         raise ValueError("Requested crop area is out of image bounds.")
 
     tile_width, tile_height = page.tilewidth, page.tilelength
     i1, j1 = i0 + h, j0 + w
 
-    tile_i0, tile_j0 = i0 // tile_height, j0 // tile_width
+    tile_i0, tile_j0 = np.floor([i0 / tile_height, j0 / tile_width]).astype(int)
     tile_i1, tile_j1 = np.ceil([i1 / tile_height, j1 / tile_width]).astype(int)
 
     tile_per_line = int(np.ceil(im_width / tile_width))
