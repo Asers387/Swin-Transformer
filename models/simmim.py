@@ -173,7 +173,6 @@ class SimMIM(nn.Module):
         self.in_chans = in_chans
         self.patch_size = patch_size
 
-    # TODO might want to test encoder without masking for super-resolution, adds complexity as is
     def forward(self, img_lr, img_vhr, mask_lr):
         z = self.encoder(img_lr, mask_lr)
         img_vhr_rec = self.decoder(z)
@@ -187,7 +186,7 @@ class SimMIM(nn.Module):
         loss_recon = F.l1_loss(img_vhr, img_vhr_rec, reduction='none')
         loss = (loss_recon * mask_vhr).sum() / (mask_vhr.sum() + 1e-5) / self.in_chans
         
-        return img_vhr * (1. - mask_vhr), img_vhr_rec * mask_vhr, loss
+        return img_vhr_rec, mask_vhr, loss
 
     @torch.jit.ignore
     def no_weight_decay(self):

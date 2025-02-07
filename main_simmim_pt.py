@@ -16,6 +16,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.amp as amp
+from torch.nn import functional as F
 from timm.utils import AverageMeter
 
 from config import get_config
@@ -277,19 +278,26 @@ def visualize(config, data_loader, model):
         img_vhr = img_vhr.cuda(non_blocking=True)
         mask_lr = mask_lr.cuda(non_blocking=True)
 
-        x_vhr, x_vhr_rec, _ = model(img_lr, img_vhr, mask_lr)
+        x_vhr_rec, mask_vhr, _ = model(img_lr, img_vhr, mask_lr)
 
-        for j, (_x_vhr, _x_vhr_rec) in enumerate(zip(x_vhr, x_vhr_rec)):
-            idx = i * len(x_vhr) + j
+        patch_size = model.module.patch_size
+        mask_lr = mask_lr.repeat_interleave(patch_size, 1).repeat_interleave(patch_size, 2).unsqueeze(1).contiguous()
+
+        x_lr = img_lr * (1. - mask_lr)
+        x_lr = x_lr.repeat_interleave(8, 2).repeat_interleave(8, 3).contiguous()
+
+        for j, (_x_lr, _x_vhr_rec, _x_vhr, _mask_vhr) in enumerate(zip(x_lr, x_vhr_rec, img_vhr, mask_vhr)):
+            idx = i * len(x_lr) + j
             file_name = Path(data_loader.dataset.data[idx])
             file_name = output_folder / file_name.parent.name / f'{file_name.stem}.jpg'
             file_name.parent.mkdir(parents=True, exist_ok=True)
 
-            _x_vhr_both = (_x_vhr + _x_vhr_rec) * std + mean
-            _x_vhr = _x_vhr * std + mean
+            _x_vhr_both = (_x_vhr * _mask_vhr + _x_vhr_rec * (1. - _mask_vhr)) * std + mean
             _x_vhr_rec = _x_vhr_rec * std + mean
+            _x_lr = _x_lr * std + mean
+            _x_vhr = _x_vhr * std + mean
 
-            save_image([_x_vhr, _x_vhr_rec, _x_vhr_both], file_name)
+            save_image([_x_lr, _x_vhr_rec, _x_vhr_both, _x_vhr], file_name, nrow=2)
 
 
 def main():
