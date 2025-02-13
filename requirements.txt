@@ -4,6 +4,7 @@ scipy
 termcolor
 tifffile
 timm
+torchmetrics
 torchshow
 wandb
 yacs
