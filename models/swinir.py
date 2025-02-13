@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from timm.layers import to_2tuple, trunc_normal_
 
-from swin_transformer import WindowAttention, DropPath, Mlp, window_partition, window_reverse
+from .swin_transformer import WindowAttention, DropPath, Mlp, window_partition, window_reverse
 
 
 class SwinTransformerBlock(nn.Module):

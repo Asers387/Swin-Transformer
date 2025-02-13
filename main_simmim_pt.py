@@ -16,8 +16,8 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.amp as amp
-from torch.nn import functional as F
 from timm.utils import AverageMeter
+from torchmetrics.functional.image import peak_signal_noise_ratio, structural_similarity_index_measure
 
 from config import get_config
 from models import build_model
@@ -224,6 +224,8 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
 
     batch_time = AverageMeter()
     loss_meter = AverageMeter()
+    psnr_meter = AverageMeter()
+    ssim_meter = AverageMeter()
 
     end = time.time()
     for idx, (img_lr, img_vhr, mask_lr) in enumerate(data_loader, start=1):
@@ -232,11 +234,17 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
         mask_lr = mask_lr.cuda(non_blocking=True)
 
         with amp.autocast('cuda', enabled=config.ENABLE_AMP):
-            _, _, loss = model(img_lr, img_vhr, mask_lr)
+            img_vhr_rec, _, loss = model(img_lr, img_vhr, mask_lr)
+            psnr = peak_signal_noise_ratio(img_vhr, img_vhr_rec) # Doesn't apply mask
+            ssim = structural_similarity_index_measure(img_vhr, img_vhr_rec) # Doesn't apply mask
 
         loss = reduce_tensor(loss)
+        psnr = reduce_tensor(psnr)
+        ssim = reduce_tensor(ssim)
 
         loss_meter.update(loss.item(), img_lr.size(0))
+        psnr_meter.update(psnr.item(), img_lr.size(0))
+        ssim_meter.update(ssim.item(), img_lr.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -248,12 +256,16 @@ def validate(config, data_loader, model, epoch, logger, wandb_logger):
                 f'Val: [{idx}/{len(data_loader)}]\t'
                 f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                 f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
+                f'PSNR {psnr_meter.val:.4f} ({psnr_meter.avg:.4f})\t'
+                f'SSIM {ssim_meter.val:.4f} ({ssim_meter.avg:.4f})\t'
                 f'Mem {memory_used:.0f}MB')
             
     if dist.get_rank() == 0:
         wandb_logger.log(
             {
-                'val_loss': loss_meter.avg
+                'val_loss': loss_meter.avg,
+                'val_psnr': psnr_meter.avg,
+                'val_ssim': ssim_meter.avg
             },
             step=epoch
         )

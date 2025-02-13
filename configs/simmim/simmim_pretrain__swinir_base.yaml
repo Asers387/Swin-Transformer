@@ -1,0 +1,37 @@
+MODEL:
+  TYPE: swinir
+  NAME: simmim_pretrain
+  DROP_PATH_RATE: 0.2
+  SWIN:
+    EMBED_DIM: 60
+    DEPTHS: [ 6, 6, 6, 6 ]
+    NUM_HEADS: [ 6, 6, 6, 6 ]
+    WINDOW_SIZE: 12
+DATA:
+  BATCH_SIZE: 2
+  IMG_SIZE: 192
+  MASK_PATCH_SIZE: 4
+  MASK_RATIO: 0.5
+  NUM_WORKERS: 16
+TRAIN:
+  EPOCHS: 400
+  WARMUP_EPOCHS: 10
+  BASE_LR: 1e-2
+  MIN_LR: 1e-4
+  WARMUP_LR: 1e-4
+  WEIGHT_DECAY: 0.05
+  OPTIMIZER:
+    NAME: adamw
+    BETA_1: 0.85
+    BETA_2: 0.95
+  ACCUMULATION_STEPS: 4
+  LR_SCHEDULER:
+    NAME: 'plateau'
+    PATIENCE_T: 20
+    THRESHOLD: 1e-2
+    COOLDOWN_T: 0
+    MODE: 'min'
+    EARLY_STOP: True
+PRINT_FREQ: 20
+SAVE_FREQ: 50
+TAG: simmim_pretrain__swinir_base

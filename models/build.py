@@ -28,7 +28,7 @@ def build_model(config, is_pretrain=False):
         layernorm = nn.LayerNorm
 
     if is_pretrain:
-        model = build_simmim(config)
+        model = build_simmim(config, layernorm)
         return model
 
     if model_type == 'swin':
@@ -64,6 +64,7 @@ def build_model(config, is_pretrain=False):
                                   drop_rate=config.MODEL.DROP_RATE,
                                   drop_path_rate=config.MODEL.DROP_PATH_RATE,
                                   ape=config.MODEL.SWINV2.APE,
+                                  norm_layer=layernorm,
                                   patch_norm=config.MODEL.SWINV2.PATCH_NORM,
                                   use_checkpoint=config.TRAIN.USE_CHECKPOINT,
                                   pretrained_window_sizes=config.MODEL.SWINV2.PRETRAINED_WINDOW_SIZES)

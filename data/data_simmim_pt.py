@@ -55,7 +55,7 @@ class MaskGenerator:
 
 class SimMIMTransform:
     def __init__(self, split_name, config):
-        if config.MODEL.TYPE in ['swin', 'swinv2']:
+        if config.MODEL.TYPE in ['swin', 'swinv2', 'swinir']:
             model_patch_size=config.MODEL.SWIN.PATCH_SIZE
         else:
             raise NotImplementedError

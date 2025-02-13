@@ -7,8 +7,6 @@
 # Written by Zhenda Xie
 # --------------------------------------------------------
 
-from functools import partial
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,6 +14,7 @@ from timm.layers import trunc_normal_
 
 from .swin_transformer import SwinTransformer
 from .swin_transformer_v2 import SwinTransformerV2
+from .swinir import SwinIR
 
 
 def norm_targets(targets, patch_size):
@@ -114,17 +113,76 @@ class SwinTransformerV2ForSimMIM(SwinTransformerV2):
         return super().no_weight_decay() | {'mask_token'}
 
 
+class SwinIRForSimMIM(SwinIR):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
+        trunc_normal_(self.mask_token, mean=0., std=.02)
+
+    def forward_features(self, x):
+        x_size = (x.shape[2], x.shape[3])
+        x = self.patch_embed(x)
+        if self.ape:
+            x = x + self.absolute_pos_embed
+        x = self.pos_drop(x)
+
+        for layer in self.layers:
+            x = layer(x, x_size)
+
+        x = self.norm(x)  # B L C
+        x = self.patch_unembed(x, x_size)
+
+        return x
+
+    def forward(self, x, mask):
+        H, W = x.shape[2:]
+        x = self.check_image_size(x)
+        
+        x = self.conv_first(x)
+
+        assert mask is not None
+        B, C, H, W = x.shape
+
+        mask = mask.repeat_interleave(4, 1).repeat_interleave(4, 2).unsqueeze(1).contiguous()
+
+        mask_tokens = self.mask_token.expand(B, H, W, -1).permute(0, 3, 1, 2)
+        w = mask.type_as(mask_tokens)
+        x = x * (1. - w) + mask_tokens * w
+
+        if self.upsampler == 'pixelshuffle':
+            # for classical SR
+            x = self.conv_after_body(self.forward_features(x)) + x
+            x = self.conv_before_upsample(x)
+            x = self.conv_last(self.upsample(x))
+        elif self.upsampler == 'pixelshuffledirect':
+            # for lightweight SR
+            x = self.conv_after_body(self.forward_features(x)) + x
+            x = self.upsample(x)
+        elif self.upsampler == 'nearest+conv':
+            # for real-world SR
+            x = self.conv_after_body(self.forward_features(x)) + x
+            x = self.conv_before_upsample(x)
+            x = self.lrelu(self.conv_up1(torch.nn.functional.interpolate(x, scale_factor=2, mode='nearest')))
+            if self.upscale == 4:
+                x = self.lrelu(self.conv_up2(torch.nn.functional.interpolate(x, scale_factor=2, mode='nearest')))
+            x = self.conv_last(self.lrelu(self.conv_hr(x)))
+        else:
+            raise NotImplementedError
+
+        return x[:, :, :H*self.upscale, :W*self.upscale]
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return super().no_weight_decay() | {'mask_token'}
+
+
 class SimMIM(nn.Module):
     def __init__(self, config, encoder, encoder_stride, in_chans, patch_size):
         super().__init__()
         self.config = config
         self.encoder = encoder
         self.encoder_stride = encoder_stride
-
-        # TODO test with predicting masked patches at VHR resolution instead of separate decoders, probably easier to start with
-        # TODO test with lowering channel size or constant
-            # TODO easier to output color at beginning of decoder? when at 4 channels, not practical to use decomposed transpose convolution
-        # TODO test with entire image of unmasked patches or individual unmasked patches (unmasked ratio equal to masked ratio)
 
         # self.decoder = nn.Sequential(
         #     nn.Conv2d(
@@ -158,24 +216,25 @@ class SimMIM(nn.Module):
         #         decoder_layers.append(EfficientUpscale(num_features, upscale_factor=2))
         #     num_features = num_features // 2
 
-        num_features = self.encoder.num_features
+        # num_features = self.encoder.num_features
 
-        decoder_layers = []
-        for i in range(4):
-            decoder_layers.append(nn.Conv2d(num_features, num_features * 4, kernel_size=1))
-            decoder_layers.append(nn.PixelShuffle(2))
-            decoder_layers.append(nn.Conv2d(num_features, num_features * 2, kernel_size=1))
-            decoder_layers.append(nn.PixelShuffle(2))
-            num_features //= 2
-        decoder_layers.append(nn.Conv2d(num_features, 3, kernel_size=1))
-        self.decoder = nn.Sequential(*decoder_layers)
-
+        # decoder_layers = []
+        # for i in range(4):
+        #     decoder_layers.append(nn.Conv2d(num_features, num_features * 4, kernel_size=1))
+        #     decoder_layers.append(nn.PixelShuffle(2))
+        #     decoder_layers.append(nn.Conv2d(num_features, num_features * 2, kernel_size=1))
+        #     decoder_layers.append(nn.PixelShuffle(2))
+        #     num_features //= 2
+        # decoder_layers.append(nn.Conv2d(num_features, 3, kernel_size=1))
+        # self.decoder = nn.Sequential(*decoder_layers)
+        
         self.in_chans = in_chans
         self.patch_size = patch_size
 
     def forward(self, img_lr, img_vhr, mask_lr):
         z = self.encoder(img_lr, mask_lr)
-        img_vhr_rec = self.decoder(z)
+        # img_vhr_rec = self.decoder(z)
+        img_vhr_rec = z
         
         mask_vhr = mask_lr.repeat_interleave(self.patch_size * 8, 1).repeat_interleave(self.patch_size * 8, 2).unsqueeze(1).contiguous()
         
@@ -201,13 +260,23 @@ class SimMIM(nn.Module):
         return {}
 
 
-def build_simmim(config):
+def build_simmim(config, layernorm):
     model_type = config.MODEL.TYPE
+
+    kwargs = dict(
+        img_size=config.DATA.IMG_SIZE,
+        patch_size=config.MODEL.SWIN.PATCH_SIZE,
+        in_chans=config.MODEL.SWIN.IN_CHANS,
+        drop_rate=config.MODEL.DROP_RATE,
+        drop_path_rate=config.MODEL.DROP_PATH_RATE,
+        norm_layer=layernorm,
+        use_checkpoint=config.TRAIN.USE_CHECKPOINT
+    )
+
+    encoder_stride = 32
+
     if model_type == 'swin':
         encoder = SwinTransformerForSimMIM(
-            img_size=config.DATA.IMG_SIZE,
-            patch_size=config.MODEL.SWIN.PATCH_SIZE,
-            in_chans=config.MODEL.SWIN.IN_CHANS,
             num_classes=0,
             embed_dim=config.MODEL.SWIN.EMBED_DIM,
             depths=config.MODEL.SWIN.DEPTHS,
@@ -216,19 +285,13 @@ def build_simmim(config):
             mlp_ratio=config.MODEL.SWIN.MLP_RATIO,
             qkv_bias=config.MODEL.SWIN.QKV_BIAS,
             qk_scale=config.MODEL.SWIN.QK_SCALE,
-            drop_rate=config.MODEL.DROP_RATE,
-            drop_path_rate=config.MODEL.DROP_PATH_RATE,
             ape=config.MODEL.SWIN.APE,
             patch_norm=config.MODEL.SWIN.PATCH_NORM,
-            use_checkpoint=config.TRAIN.USE_CHECKPOINT)
-        encoder_stride = 32
+            **kwargs)
         in_chans = config.MODEL.SWIN.IN_CHANS
         patch_size = config.MODEL.SWIN.PATCH_SIZE
     elif model_type == 'swinv2':
         encoder = SwinTransformerV2ForSimMIM(
-            img_size=config.DATA.IMG_SIZE,
-            patch_size=config.MODEL.SWINV2.PATCH_SIZE,
-            in_chans=config.MODEL.SWINV2.IN_CHANS,
             num_classes=0,
             embed_dim=config.MODEL.SWINV2.EMBED_DIM,
             depths=config.MODEL.SWINV2.DEPTHS,
@@ -236,14 +299,28 @@ def build_simmim(config):
             window_size=config.MODEL.SWINV2.WINDOW_SIZE,
             mlp_ratio=config.MODEL.SWINV2.MLP_RATIO,
             qkv_bias=config.MODEL.SWINV2.QKV_BIAS,
-            drop_rate=config.MODEL.DROP_RATE,
-            drop_path_rate=config.MODEL.DROP_PATH_RATE,
             ape=config.MODEL.SWINV2.APE,
             patch_norm=config.MODEL.SWINV2.PATCH_NORM,
-            use_checkpoint=config.TRAIN.USE_CHECKPOINT)
-        encoder_stride = 32
+            **kwargs)
         in_chans = config.MODEL.SWINV2.IN_CHANS
         patch_size = config.MODEL.SWINV2.PATCH_SIZE
+    elif model_type == 'swinir':
+        encoder = SwinIRForSimMIM(
+            embed_dim=config.MODEL.SWIN.EMBED_DIM,
+            depths=config.MODEL.SWIN.DEPTHS,
+            num_heads=config.MODEL.SWIN.NUM_HEADS,
+            window_size=config.MODEL.SWIN.WINDOW_SIZE,
+            mlp_ratio=config.MODEL.SWIN.MLP_RATIO,
+            qkv_bias=config.MODEL.SWIN.QKV_BIAS,
+            qk_scale=config.MODEL.SWIN.QK_SCALE,
+            ape=config.MODEL.SWIN.APE,
+            patch_norm=config.MODEL.SWIN.PATCH_NORM,
+            upscale=8,
+            img_range=1.,
+            upsampler='pixelshuffledirect',
+            **kwargs)
+        in_chans = config.MODEL.SWIN.IN_CHANS
+        patch_size = config.MODEL.SWIN.PATCH_SIZE
     else:
         raise NotImplementedError(f"Unknown pre-train model: {model_type}")
 

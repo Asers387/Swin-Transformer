@@ -109,7 +109,7 @@ def load_pretrained(config, model, logger):
     else:
         logger.info('Detect non-pre-trained model, pass without doing anything.')
 
-    if config.MODEL.TYPE in ['swin', 'swinv2']:
+    if config.MODEL.TYPE in ['swin', 'swinv2', 'swinir']:
         logger.info(f">>>>>>>>>> Remapping pre-trained keys for SWIN ..........")
         checkpoint = remap_pretrained_keys_swin(model, checkpoint_model, logger)
     else:
