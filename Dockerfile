@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-devel
+FROM nvcr.io/nvidia/pytorch:25.01-py3
 
 WORKDIR /code
 
