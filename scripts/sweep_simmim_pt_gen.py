@@ -15,7 +15,7 @@ SWEEP_CONFIG = {
         'MODEL': {
             'parameters': {
                 'TYPE': {
-                    'value': 'swinv2'
+                    'value': 'swinir'
                 },
                 'NAME': {
                     'value': PROJECT
@@ -24,16 +24,16 @@ SWEEP_CONFIG = {
                     'distribution': 'uniform',
                     'min': 0.0, 'max': 0.5
                 },
-                'SWINV2': {
+                'SWIN': {
                     'parameters': {
                         'EMBED_DIM': {
-                            'value': 128
+                            'value': 60
                         },
                         'DEPTHS': {
-                            'value': [2, 2, 18, 2]
+                            'value': [6, 6, 6, 6]
                         },
                         'NUM_HEADS': {
-                            'value': [4, 8, 16, 32]
+                            'value': [6, 6, 6, 6]
                         },
                         'WINDOW_SIZE': {
                             'value': 12
@@ -45,7 +45,7 @@ SWEEP_CONFIG = {
         'DATA': {
             'parameters': {
                 'BATCH_SIZE': {
-                    'value': 4
+                    'value': 6
                 },
                 'IMG_SIZE': {
                     'value': 192
@@ -70,17 +70,35 @@ SWEEP_CONFIG = {
                     'value': 10
                 },
                 'BASE_LR': {
-                    'values': [1e-4, 1e-3, 1e-2, 1e-1]
+                    'values': [1e-3, 1e-2, 1e-1]
                 },
                 'MIN_LR': {
-                    'value': 1e-6
+                    'value': 1e-4
                 },
                 'WARMUP_LR': {
-                    'value': 1e-6
+                    'value': 1e-4
                 },
                 'WEIGHT_DECAY': {
                     'distribution': 'uniform',
                     'min': 0.0, 'max': 0.5
+                },
+                'OPTIMIZER': {
+                    'parameters': {
+                        'NAME': {
+                            'value': 'adamw'
+                        },
+                        'BETA_1': {
+                            'distribution': 'uniform',
+                            'min': 0.85, 'max': 0.95
+                        },
+                        'BETA_2': {
+                            'distribution': 'uniform',
+                            'min': 0.9, 'max': 0.999
+                        }
+                    }
+                },
+                'ACCUMULATION_STEPS': {
+                    'values': [1, 2, 4]
                 },
                 'LR_SCHEDULER': {
                     'parameters': {
@@ -103,24 +121,6 @@ SWEEP_CONFIG = {
                             'value': True
                         }
                     }
-                },
-                'OPTIMIZER': {
-                    'parameters': {
-                        'NAME': {
-                            'value': 'adamw'
-                        },
-                        'BETA_1': {
-                            'distribution': 'uniform',
-                            'min': 0.85, 'max': 0.95
-                        },
-                        'BETA_2': {
-                            'distribution': 'uniform',
-                            'min': 0.9, 'max': 0.999
-                        }
-                    }
-                },
-                'ACCUMULATION_STEPS': {
-                    'values': [1, 4, 8]
                 }
             }
         },
@@ -131,7 +131,7 @@ SWEEP_CONFIG = {
             'value': -1
         },
         'TAG': {
-            'value': 'simmim_pretrain__swinv2_base'
+            'value': 'simmim_pretrain__swinir_base'
         }
     }
 }
